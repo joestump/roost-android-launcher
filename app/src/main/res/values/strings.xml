@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">Claude Home</string>
+    <string name="settings_title">Claude Home settings</string>
+
+    <string name="appliance_hint">Long-press anywhere for apps &amp; settings</string>
+    <string name="apps_and_settings">Apps &amp; settings</string>
+    <string name="not_installed">%1$s is not installed</string>
+
+    <string name="settings_mode">Launcher mode</string>
+    <string name="mode_curated">Curated — Home shows the app grid</string>
+    <string name="mode_appliance">Appliance — Home shows Claude; long-press to reveal apps</string>
+
+    <string name="settings_behavior">Behavior</string>
+    <string name="behavior_boot">Auto-launch Claude on boot</string>
+    <string name="behavior_screen">Keep screen on</string>
+
+    <string name="settings_pkg">Claude package</string>
+    <string name="settings_pkg_save">Save package</string>
+    <string name="saved">Saved</string>
+
+    <string name="settings_favorites">Favorites (shown on the launcher)</string>
+    <string name="open_android_settings">Open Android Settings</string>
+</resources>
