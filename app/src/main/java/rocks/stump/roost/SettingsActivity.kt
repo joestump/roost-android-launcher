@@ -59,6 +59,16 @@ class SettingsActivity : Activity() {
             Prefs.setKeepScreenOn(this, it)
         })
 
+        // --- Action buttons ---
+        col.addView(header(getString(R.string.settings_actions)))
+        col.addView(TextView(this).apply {
+            text = getString(R.string.settings_actions_open)
+            setTextColor(accent)
+            textSize = 15f
+            setPadding(0, dp(4f), 0, dp(4f))
+            setOnClickListener { startActivity(Intent(this@SettingsActivity, ActionsActivity::class.java)) }
+        })
+
         // --- Accent tint ---
         col.addView(header(getString(R.string.settings_accent)))
         col.addView(accentSwatches())

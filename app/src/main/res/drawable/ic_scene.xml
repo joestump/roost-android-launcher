@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- A little sparkle — the "scene / magic" motif. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M10,3 l1.7,5.3 5.3,1.7 -5.3,1.7 -1.7,5.3 -1.7,-5.3 -5.3,-1.7 5.3,-1.7 z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.7"
+        android:pathData="M18.5,13 l0.8,2.2 2.2,0.8 -2.2,0.8 -0.8,2.2 -0.8,-2.2 -2.2,-0.8 2.2,-0.8 z" />
+</vector>

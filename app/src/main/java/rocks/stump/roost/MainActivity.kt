@@ -18,6 +18,7 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.GridLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -110,6 +111,7 @@ class MainActivity : Activity() {
         vpnChip()?.let { col.addView(it) }
         col.addView(spacer(dp(24f)))
         col.addView(utilityGrid())
+        actionRow()?.let { col.addView(it) }
         col.addView(weightedSpacer())
         col.addView(appsSettingsLink(dp(16f)))
 
@@ -408,6 +410,87 @@ class MainActivity : Activity() {
 
     private fun isInstalled(pkg: String): Boolean =
         try { packageManager.getApplicationInfo(pkg, 0); true } catch (e: Exception) { false }
+
+    // --- Action buttons (pluggable — see SPEC-0001) -----------------------------------------
+
+    // Governing: ADR-0002 (pluggable action-button providers), SPEC-0001 REQ "Home-screen rendering"
+    private fun actionRow(): View? {
+        val buttons = Prefs.actionButtons(this)
+        if (buttons.isEmpty()) return null
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(2f), 0, dp(2f), 0)
+        }
+        buttons.forEach { row.addView(actionPill(it)) }
+        return HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            setPadding(0, dp(18f), 0, 0)
+            addView(row)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+    }
+
+    private fun actionPill(b: ActionButton): View {
+        val pill = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Roost.rounded(Roost.TILE, dp(20f).toFloat(), Roost.HAIRLINE, dp(1f))
+            setPadding(dp(12f), dp(9f), dp(14f), dp(9f))
+            isClickable = true
+            setOnClickListener { invokeAction(b) }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { rightMargin = dp(10f) }
+        }
+        pill.addView(ImageView(this).apply {
+            setImageDrawable(actionIcon(b))
+            if (b.kind == ActionKind.HASS_SCENE) setColorFilter(accent)
+            val s = dp(20f)
+            layoutParams = LinearLayout.LayoutParams(s, s)
+        })
+        pill.addView(TextView(this).apply {
+            text = b.title.substringAfterLast(" · ")
+            setTextColor(Roost.TEXT)
+            textSize = 13f
+            maxLines = 1
+            setPadding(dp(8f), 0, 0, 0)
+        })
+        return pill
+    }
+
+    private fun actionIcon(b: ActionButton): Drawable? = when (b.kind) {
+        ActionKind.SHORTCUT -> ShortcutProvider.icon(this, b.a, b.b) ?: appIcon(b.a)
+        ActionKind.HASS_SCENE ->
+            try { resources.getDrawable(R.drawable.ic_scene, theme)?.mutate() } catch (e: Exception) { null }
+    }
+
+    // Governing: ADR-0002 (pluggable action-button providers), SPEC-0001 REQ "Threading and error handling"
+    private fun invokeAction(b: ActionButton) {
+        when (b.kind) {
+            ActionKind.SHORTCUT ->
+                if (!ShortcutProvider.invoke(this, b.a, b.b)) {
+                    Toast.makeText(this, getString(R.string.action_failed, b.title), Toast.LENGTH_SHORT).show()
+                }
+            ActionKind.HASS_SCENE -> {
+                val acct = Prefs.hassAccounts(this).find { it.id == b.a }
+                if (acct == null) {
+                    Toast.makeText(this, getString(R.string.action_failed, b.title), Toast.LENGTH_SHORT).show()
+                } else {
+                    Thread {
+                        val ok = runCatching { Hass.activateScene(acct, b.b) }.isSuccess
+                        runOnUiThread {
+                            val msg = if (ok) "✓ ${b.title.substringAfterLast(" · ")}"
+                            else getString(R.string.action_failed, b.title.substringAfterLast(" · "))
+                            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                        }
+                    }.start()
+                }
+            }
+        }
+    }
 
     // --- Resolution / launching -------------------------------------------------------------
 

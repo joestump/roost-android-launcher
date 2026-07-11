@@ -45,6 +45,11 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
+        <activity
+            android:name=".ActionsActivity"
+            android:exported="false"
+            android:label="@string/actions_title" />
+
         <receiver
             android:name=".BootReceiver"
             android:exported="true">

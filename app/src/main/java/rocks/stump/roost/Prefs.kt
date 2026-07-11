@@ -40,6 +40,8 @@ object Prefs {
     private const val K_AGENT_NAME = "agent_name"
     private const val K_WEB_APPS = "web_apps"
     private const val K_WG_TUNNEL = "wg_tunnel"
+    private const val K_HASS_ACCOUNTS = "hass_accounts"
+    private const val K_ACTION_BUTTONS = "action_buttons"
 
     private fun sp(c: Context): SharedPreferences =
         c.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -81,6 +83,70 @@ object Prefs {
     /** WireGuard tunnel name for the one-tap VPN toggle. Blank → the VPN chip just opens WireGuard. */
     fun wireguardTunnel(c: Context): String = sp(c).getString(K_WG_TUNNEL, "") ?: ""
     fun setWireguardTunnel(c: Context, v: String) = sp(c).edit().putString(K_WG_TUNNEL, v).apply()
+
+    // --- Home Assistant accounts ---
+
+    fun hassAccounts(c: Context): MutableList<HassAccount> {
+        val arr = JSONArray(sp(c).getString(K_HASS_ACCOUNTS, "[]") ?: "[]")
+        val out = mutableListOf<HassAccount>()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            out.add(HassAccount(o.optString("id"), o.optString("name"), o.optString("url"), o.optString("token")))
+        }
+        return out
+    }
+
+    fun setHassAccounts(c: Context, accts: List<HassAccount>) {
+        val arr = JSONArray()
+        accts.forEach {
+            arr.put(JSONObject().put("id", it.id).put("name", it.name).put("url", it.url).put("token", it.token))
+        }
+        sp(c).edit().putString(K_HASS_ACCOUNTS, arr.toString()).apply()
+    }
+
+    fun addHassAccount(c: Context, name: String, url: String, token: String): HassAccount {
+        val acct = HassAccount(java.util.UUID.randomUUID().toString(), name.ifBlank { url }, url, token)
+        setHassAccounts(c, hassAccounts(c).apply { add(acct) })
+        return acct
+    }
+
+    fun removeHassAccount(c: Context, id: String) {
+        setHassAccounts(c, hassAccounts(c).filterNot { it.id == id })
+        // Also drop any action buttons that belonged to this account.
+        setActionButtons(c, actionButtons(c).filterNot { it.kind == ActionKind.HASS_SCENE && it.a == id })
+    }
+
+    // --- Action buttons (pluggable) ---
+
+    fun actionButtons(c: Context): MutableList<ActionButton> {
+        val arr = JSONArray(sp(c).getString(K_ACTION_BUTTONS, "[]") ?: "[]")
+        val out = mutableListOf<ActionButton>()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            val kind = runCatching { ActionKind.valueOf(o.optString("kind")) }.getOrNull() ?: continue
+            out.add(ActionButton(kind, o.optString("key"), o.optString("title"), o.optString("a"), o.optString("b")))
+        }
+        return out
+    }
+
+    fun setActionButtons(c: Context, buttons: List<ActionButton>) {
+        val arr = JSONArray()
+        buttons.forEach {
+            arr.put(
+                JSONObject().put("kind", it.kind.name).put("key", it.key)
+                    .put("title", it.title).put("a", it.a).put("b", it.b)
+            )
+        }
+        sp(c).edit().putString(K_ACTION_BUTTONS, arr.toString()).apply()
+    }
+
+    fun isActionEnabled(c: Context, key: String): Boolean = actionButtons(c).any { it.key == key }
+
+    fun setActionEnabled(c: Context, button: ActionButton, enabled: Boolean) {
+        val cur = actionButtons(c).filterNot { it.key == button.key }.toMutableList()
+        if (enabled) cur.add(button)
+        setActionButtons(c, cur)
+    }
 
     /** User-added web apps (self-hosted dashboards, etc.), each opening fullscreen in a WebView. */
     fun webApps(c: Context): MutableList<WebApp> {
