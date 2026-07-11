@@ -5,22 +5,26 @@ agent**. It boots straight into your agent app (Claude, ChatGPT, Gemini, a local
 pick) but keeps a short list of utility apps (a VPN client, mail, a password manager) one tap away —
 because a hard single-app kiosk can't hop to WireGuard when you need to bring a tunnel up.
 
-Roost is ~700 lines of pure Android framework Kotlin — no AndroidX, no Compose, no Material, no raster
-assets, no bundled fonts. Deliberately hackable. It's **vendor-neutral**: the featured tile renders the
-installed agent app's own icon at runtime, so Roost's identity (a little robot that lives on the phone)
-stands on its own.
+Roost is pure Android framework Kotlin — no AndroidX, no Compose, no Material, no raster assets, no
+bundled fonts. Deliberately hackable. It's **vendor-neutral**: the featured tile renders the installed
+agent app's own icon at runtime, so Roost's identity (a little robot that lives on the phone) stands on
+its own.
 
+![Roost home screen](docs/screenshots/home.png)
 
 ## Two modes (toggle in Settings)
 
 | Mode | Home button shows | Boot |
 | --- | --- | --- |
-| **Curated** | The robot mascot, a greeting, the featured agent card, and your utility grid | Auto-launches the agent once |
+| **Curated** | The robot mascot, a greeting, and one aligned grid — the featured agent (accent ring), your utility apps, and web apps | Auto-launches the agent once |
 | **Appliance** | An ambient "at rest" face (mascot + greeting); **long-press** anywhere reveals the grid | Auto-launches the agent once |
 
-Other toggles: **auto-launch the agent on boot**, **keep screen on while docked**, a **themeable accent**
-(Honey / Slate / Sage / Violet), a **favorites picker**, the **featured agent app**, and a
-**"Match wallpaper to Roost"** action that paints Recents/transitions in the same warm-dark palette.
+Tapping the mascot (or the ringed agent tile) opens your agent. Other settings: an **agent name** (the
+greeting becomes "<name> is home" and drives the live status line), **auto-launch on boot**, **keep screen
+on while docked**, a **themeable accent** (Honey / Slate / Sage / Violet), a **favorites picker**, the
+**featured agent app**, **web apps** (add a URL that opens fullscreen in a WebView — self-host a Homarr or
+Homepage dashboard as an app tile), and a **"Match wallpaper to Roost"** action that paints
+Recents/transitions in the same warm-dark palette.
 
 ## How it works
 

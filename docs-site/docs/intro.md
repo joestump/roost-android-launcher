@@ -30,7 +30,7 @@ for free while Roost's own identity stands on its own. Point it at any agent app
 ## What it does
 
 - **Boots into your agent** on power-up.
-- **Curated home**: a robot mascot, a greeting, a featured agent card, and a grid of your utility apps.
+- **Curated home**: a robot mascot, a greeting, and one aligned grid — the featured agent, your utility apps, and web apps.
 - **Appliance mode**: an ambient "at rest" face; long-press reveals the grid.
 - **Themeable accent** (Honey / Slate / Sage / Violet), **keep-screen-on**, and a **matching wallpaper** so
   Recents and app transitions stay on-theme.
