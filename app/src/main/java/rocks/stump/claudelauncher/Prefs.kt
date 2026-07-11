@@ -30,6 +30,7 @@ object Prefs {
     private const val K_FAVORITES = "favorites"
     private const val K_PENDING_BOOT = "pending_boot_launch"
     private const val K_ACCENT = "accent"
+    private const val K_WALLPAPER_APPLIED = "wallpaper_applied"
 
     private fun sp(c: Context): SharedPreferences =
         c.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -59,4 +60,8 @@ object Prefs {
     /** Themeable accent color (ARGB int). Defaults to Honey. */
     fun accent(c: Context): Int = sp(c).getInt(K_ACCENT, Roost.DEFAULT_ACCENT)
     fun setAccent(c: Context, v: Int) = sp(c).edit().putInt(K_ACCENT, v).apply()
+
+    /** Whether we've already painted the matching wallpaper once (first-run auto-apply). */
+    fun wallpaperApplied(c: Context): Boolean = sp(c).getBoolean(K_WALLPAPER_APPLIED, false)
+    fun setWallpaperApplied(c: Context, v: Boolean) = sp(c).edit().putBoolean(K_WALLPAPER_APPLIED, v).apply()
 }

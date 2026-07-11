@@ -1,8 +1,15 @@
 package rocks.stump.claudelauncher
 
+import android.app.WallpaperManager
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.util.Log
 import android.util.TypedValue
 
 /**
@@ -52,4 +59,33 @@ object Roost {
         }
 
     fun medium(): Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+
+    /**
+     * Paint a wallpaper that matches the dock background, so the surfaces the launcher can't
+     * cover (Recents/overview, app-transition animations) share Roost's warm-dark look instead
+     * of the stock photo wallpaper. Sets both home and lock. Returns true on success.
+     */
+    fun applyWallpaper(c: Context): Boolean {
+        return try {
+            val wm = WallpaperManager.getInstance(c)
+            val dm = c.resources.displayMetrics
+            val w = wm.desiredMinimumWidth.takeIf { it > 0 } ?: dm.widthPixels
+            val h = wm.desiredMinimumHeight.takeIf { it > 0 } ?: dm.heightPixels
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bmp)
+            canvas.drawColor(DOCK)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+            paint.shader = RadialGradient(
+                w * 0.5f, h * 0.28f, h * 0.62f,
+                DOCK_TOP, DOCK, Shader.TileMode.CLAMP
+            )
+            canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
+            wm.setBitmap(bmp)
+            bmp.recycle()
+            true
+        } catch (e: Exception) {
+            Log.w("Roost", "applyWallpaper failed", e)
+            false
+        }
+    }
 }

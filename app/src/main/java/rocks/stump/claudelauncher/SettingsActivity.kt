@@ -62,6 +62,21 @@ class SettingsActivity : Activity() {
         col.addView(header(getString(R.string.settings_accent)))
         col.addView(accentSwatches())
 
+        // --- Wallpaper ---
+        col.addView(header(getString(R.string.settings_wallpaper)))
+        col.addView(Button(this).apply {
+            text = getString(R.string.settings_wallpaper_apply)
+            setOnClickListener {
+                val ok = Roost.applyWallpaper(this@SettingsActivity)
+                Prefs.setWallpaperApplied(this@SettingsActivity, true)
+                Toast.makeText(
+                    this@SettingsActivity,
+                    if (ok) R.string.wallpaper_set else R.string.wallpaper_failed,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        })
+
         // --- Featured agent app ---
         col.addView(header(getString(R.string.settings_pkg)))
         val pkgEdit = EditText(this).apply {

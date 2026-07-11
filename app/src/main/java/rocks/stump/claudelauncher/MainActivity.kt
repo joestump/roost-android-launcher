@@ -40,6 +40,12 @@ class MainActivity : Activity() {
         super.onResume()
         applyScreenOn()
 
+        // First run: paint a matching wallpaper so Recents/transitions share Roost's look.
+        if (!Prefs.wallpaperApplied(this)) {
+            Roost.applyWallpaper(this)
+            Prefs.setWallpaperApplied(this, true)
+        }
+
         if (Prefs.pendingBootLaunch(this)) {
             Prefs.setPendingBootLaunch(this, false)
             if (launchAgent()) return

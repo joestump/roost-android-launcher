@@ -20,6 +20,11 @@
 
     <string name="settings_accent">Accent tint</string>
 
+    <string name="settings_wallpaper">Wallpaper</string>
+    <string name="settings_wallpaper_apply">Match wallpaper to Roost</string>
+    <string name="wallpaper_set">Wallpaper updated</string>
+    <string name="wallpaper_failed">Couldn\'t set wallpaper</string>
+
     <string name="settings_pkg">Featured agent app (package)</string>
     <string name="settings_pkg_save">Save</string>
     <string name="saved">Saved</string>
