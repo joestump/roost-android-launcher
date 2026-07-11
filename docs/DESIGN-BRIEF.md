@@ -82,7 +82,7 @@ Warm, a little playful, clearly *an AI agent's own gadget* — a robot that has 
 heavy themed skin, not tied to one brand. **Fast, calm, characterful.**
 
 ## Repo (read the current code/assets)
-Reference implementation (currently Claude-flavored): https://gitea.stump.rocks/joestump/claude-android-launcher
+Reference implementation (currently Claude-flavored): https://gitea.stump.rocks/joestump/roost-android-launcher
 - `app/src/main/java/rocks/stump/claudelauncher/MainActivity.kt` — home + appliance surfaces; note the
   featured/utility tiles load each installed app's real icon at runtime.
 - `app/src/main/java/rocks/stump/claudelauncher/SettingsActivity.kt` — settings + favorites picker.

@@ -1,4 +1,4 @@
-package rocks.stump.claudelauncher
+package rocks.stump.roost
 
 import android.app.Activity
 import android.content.Intent
@@ -80,7 +80,7 @@ class SettingsActivity : Activity() {
         // --- Featured agent app ---
         col.addView(header(getString(R.string.settings_pkg)))
         val pkgEdit = EditText(this).apply {
-            setText(Prefs.claudePkg(this@SettingsActivity))
+            setText(Prefs.agentPkg(this@SettingsActivity))
             inputType = InputType.TYPE_CLASS_TEXT
             setTextColor(Roost.TEXT)
             setHintTextColor(Roost.MUTED)
@@ -91,7 +91,7 @@ class SettingsActivity : Activity() {
             setOnClickListener {
                 val v = pkgEdit.text.toString().trim()
                 if (v.isNotEmpty()) {
-                    Prefs.setClaudePkg(this@SettingsActivity, v)
+                    Prefs.setAgentPkg(this@SettingsActivity, v)
                     Toast.makeText(this@SettingsActivity, R.string.saved, Toast.LENGTH_SHORT).show()
                 }
             }

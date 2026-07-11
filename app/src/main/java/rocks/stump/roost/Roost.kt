@@ -1,4 +1,4 @@
-package rocks.stump.claudelauncher
+package rocks.stump.roost
 
 import android.app.WallpaperManager
 import android.content.Context

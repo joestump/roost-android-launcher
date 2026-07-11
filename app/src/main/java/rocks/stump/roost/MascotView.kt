@@ -1,4 +1,4 @@
-package rocks.stump.claudelauncher
+package rocks.stump.roost
 
 import android.content.Context
 import android.graphics.Canvas

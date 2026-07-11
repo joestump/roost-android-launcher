@@ -1,4 +1,4 @@
-package rocks.stump.claudelauncher
+package rocks.stump.roost
 
 import android.app.Activity
 import android.content.Intent
@@ -180,7 +180,7 @@ class MainActivity : Activity() {
     }
 
     private fun featuredCard(): View {
-        val pkg = Prefs.claudePkg(this)
+        val pkg = Prefs.agentPkg(this)
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -246,7 +246,7 @@ class MainActivity : Activity() {
         val columns = 3
         val grid = GridLayout(this).apply { columnCount = columns }
         val cell = (resources.displayMetrics.widthPixels - dp(44f)) / columns
-        val agentPkg = Prefs.claudePkg(this)
+        val agentPkg = Prefs.agentPkg(this)
 
         Prefs.favorites(this)
             .filter { it != agentPkg }
@@ -338,7 +338,7 @@ class MainActivity : Activity() {
         null
     }
 
-    private fun launchAgent(): Boolean = launchPackage(Prefs.claudePkg(this))
+    private fun launchAgent(): Boolean = launchPackage(Prefs.agentPkg(this))
 
     private fun launchPackage(pkg: String): Boolean {
         val intent = packageManager.getLaunchIntentForPackage(pkg)

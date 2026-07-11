@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "rocks.stump.claudelauncher"
+    namespace = "rocks.stump.roost"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "rocks.stump.claudelauncher"
+        applicationId = "rocks.stump.roost"
         minSdk = 26
         targetSdk = 34
         versionCode = 4

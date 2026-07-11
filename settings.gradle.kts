@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ClaudeLauncher"
+rootProject.name = "Roost"
 include(":app")
