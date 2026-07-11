@@ -6,6 +6,8 @@ const sidebars: SidebarsConfig = {
     'install',
     'modes',
     'design',
+    'http-actions',
+    'settings',
     'provisioning',
     'architecture',
     'contributing',
