@@ -1,13 +1,14 @@
 package rocks.stump.roost
 
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.os.BatteryManager
-import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -23,15 +24,24 @@ import android.widget.Toast
 /**
  * The HOME surface, styled per the "Roost" design.
  *
- *  - Curated  : the robot mascot + greeting + featured agent card + utility grid.
+ *  - Curated  : the robot mascot, a greeting, and a single aligned grid — the featured agent (accent
+ *               ring) first, then utility apps, then web apps, then Add.
  *  - Appliance: an ambient "at rest" face (mascot + greeting); long-press reveals the grid.
  *
- * Boot auto-launch (both modes) is driven by a one-shot flag armed in BootReceiver and consumed
- * here, so the actual startActivity() runs from the foreground HOME activity (allowed).
+ * The greeting and the mono status line update live from a battery-change receiver, so charging state
+ * and % are never stale.
  */
 class MainActivity : Activity() {
 
     private var applianceRevealed = false
+
+    private var greetingLabel: TextView? = null
+    private var statusLabel: TextView? = null
+
+    private var batteryRegistered = false
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = refreshStatus()
+    }
 
     private val accent: Int get() = Prefs.accent(this)
     private fun dp(v: Float): Int = Roost.dp(this, v)
@@ -40,7 +50,6 @@ class MainActivity : Activity() {
         super.onResume()
         applyScreenOn()
 
-        // First run: paint a matching wallpaper so Recents/transitions share Roost's look.
         if (!Prefs.wallpaperApplied(this)) {
             Roost.applyWallpaper(this)
             Prefs.setWallpaperApplied(this, true)
@@ -50,7 +59,14 @@ class MainActivity : Activity() {
             Prefs.setPendingBootLaunch(this, false)
             if (launchAgent()) return
         }
+
         render()
+        registerBattery()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        unregisterBattery()
     }
 
     override fun onStop() {
@@ -87,9 +103,7 @@ class MainActivity : Activity() {
         col.addView(mascot(dp(128f)))
         col.addView(greetingView())
         col.addView(statusView())
-        col.addView(spacer(dp(22f)))
-        col.addView(featuredCard())
-        col.addView(spacer(dp(22f)))
+        col.addView(spacer(dp(24f)))
         col.addView(utilityGrid())
         col.addView(appsSettingsLink(dp(26f)))
 
@@ -142,17 +156,20 @@ class MainActivity : Activity() {
 
     private fun mascot(sizePx: Int): MascotView = MascotView(this).apply {
         accent = this@MainActivity.accent
+        isClickable = true
+        setOnClickListener { launchAgent() }
         layoutParams = LinearLayout.LayoutParams(sizePx, sizePx).apply {
             gravity = Gravity.CENTER_HORIZONTAL
         }
     }
 
     private fun greetingView(): TextView = TextView(this).apply {
-        text = getString(R.string.greeting_home)
+        text = greeting()
         setTextColor(Roost.TEXT)
         textSize = 21f
         gravity = Gravity.CENTER
         setPadding(0, dp(10f), 0, 0)
+        greetingLabel = this
     }
 
     private fun statusView(): TextView = TextView(this).apply {
@@ -162,14 +179,23 @@ class MainActivity : Activity() {
         typeface = Typeface.MONOSPACE
         gravity = Gravity.CENTER
         setPadding(0, dp(6f), 0, 0)
+        statusLabel = this
+    }
+
+    private fun greeting(): String {
+        val name = Prefs.agentName(this).trim()
+        return if (name.isNotEmpty()) getString(R.string.greeting_named, name)
+        else getString(R.string.greeting_home)
     }
 
     private fun statusLine(): String {
         val (pct, charging) = battery()
+        val who = Prefs.agentName(this).trim().ifEmpty { "roost" }
         val word = if (charging) "docked & charging" else "on battery"
-        return if (pct >= 0) "roost · $word · $pct%" else "roost · $word"
+        return if (pct >= 0) "$who · $word · $pct%" else "$who · $word"
     }
 
+    /** Returns (battery %, isOnPower). Reads the sticky ACTION_BATTERY_CHANGED intent. */
     private fun battery(): Pair<Int, Boolean> {
         val i = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
@@ -179,67 +205,23 @@ class MainActivity : Activity() {
         return pct to (plugged != 0)
     }
 
-    private fun featuredCard(): View {
-        val pkg = Prefs.agentPkg(this)
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = Roost.rounded(Roost.PANEL, dp(18f).toFloat(), Roost.HAIRLINE, dp(1f))
-            setPadding(dp(15f), dp(15f), dp(15f), dp(15f))
-            elevation = dp(2f).toFloat()
-            isClickable = true
-            setOnClickListener { launchAgent() }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        val iconTile = FrameLayout(this).apply {
-            background = Roost.rounded(Roost.TILE, dp(14f).toFloat())
-            val s = dp(64f)
-            layoutParams = LinearLayout.LayoutParams(s, s)
-        }
-        iconTile.addView(ImageView(this).apply {
-            setImageDrawable(appIcon(pkg))
-            val p = dp(12f)
-            setPadding(p, p, p, p)
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        })
-        card.addView(iconTile)
-
-        val texts = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14f), 0, dp(10f), 0)
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        texts.addView(TextView(this).apply {
-            text = appLabel(pkg) ?: "Agent"
-            setTextColor(Roost.TEXT)
-            textSize = 18f
-            typeface = Roost.medium()
-        })
-        texts.addView(TextView(this).apply {
-            text = getString(R.string.featured_subtitle)
-            setTextColor(Roost.MUTED)
-            textSize = 12.5f
-            setPadding(0, dp(2f), 0, 0)
-        })
-        card.addView(texts)
-
-        card.addView(chip(getString(R.string.featured)))
-        return card
+    private fun refreshStatus() {
+        greetingLabel?.text = greeting()
+        statusLabel?.text = statusLine()
     }
 
-    private fun chip(label: String): TextView = TextView(this).apply {
-        text = label.uppercase()
-        setTextColor(accent)
-        textSize = 10f
-        letterSpacing = 0.08f
-        typeface = Roost.medium()
-        background = Roost.rounded(Roost.soft(accent), dp(20f).toFloat())
-        setPadding(dp(10f), dp(5f), dp(10f), dp(5f))
+    private fun registerBattery() {
+        if (!batteryRegistered) {
+            registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            batteryRegistered = true
+        }
+    }
+
+    private fun unregisterBattery() {
+        if (batteryRegistered) {
+            try { unregisterReceiver(batteryReceiver) } catch (e: Exception) { /* not registered */ }
+            batteryRegistered = false
+        }
     }
 
     private fun utilityGrid(): View {
@@ -248,13 +230,24 @@ class MainActivity : Activity() {
         val cell = (resources.displayMetrics.widthPixels - dp(44f)) / columns
         val agentPkg = Prefs.agentPkg(this)
 
+        // Featured agent — same tile size/style as the rest, marked with an accent ring.
+        grid.addView(tile(appLabel(agentPkg) ?: "Agent", appIcon(agentPkg), cell, ringed = true) {
+            launchAgent()
+        })
+
+        // Installed favorites (minus the agent), alphabetical.
         Prefs.favorites(this)
             .filter { it != agentPkg }
             .mapNotNull { pkg -> appLabel(pkg)?.let { pkg to it } }
             .sortedBy { it.second.lowercase() }
-            .forEach { (pkg, label) ->
-                grid.addView(tile(label, appIcon(pkg), cell, isAdd = false) { launchPackage(pkg) })
-            }
+            .forEach { (pkg, label) -> grid.addView(tile(label, appIcon(pkg), cell) { launchPackage(pkg) }) }
+
+        // Web apps — fullscreen WebView tiles.
+        Prefs.webApps(this).forEach { wa ->
+            grid.addView(tile(wa.name, webIcon(), cell, iconTint = WEB_ICON_TINT) { openWebApp(wa.url) })
+        }
+
+        // Add.
         grid.addView(tile(getString(R.string.add), null, cell, isAdd = true) {
             startActivity(Intent(this, SettingsActivity::class.java))
         })
@@ -265,7 +258,15 @@ class MainActivity : Activity() {
         return grid
     }
 
-    private fun tile(label: String, icon: Drawable?, cellPx: Int, isAdd: Boolean, onClick: () -> Unit): View {
+    private fun tile(
+        label: String,
+        icon: Drawable?,
+        cellPx: Int,
+        isAdd: Boolean = false,
+        ringed: Boolean = false,
+        iconTint: Int? = null,
+        onClick: () -> Unit
+    ): View {
         val cell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -274,11 +275,13 @@ class MainActivity : Activity() {
             setOnClickListener { onClick() }
         }
 
+        val borderColor = when {
+            ringed -> accent
+            isAdd -> Roost.soft(accent)
+            else -> Roost.HAIRLINE
+        }
         val surface = FrameLayout(this).apply {
-            background = Roost.rounded(
-                Roost.TILE, dp(16f).toFloat(),
-                if (isAdd) Roost.soft(accent) else Roost.HAIRLINE, dp(1f)
-            )
+            background = Roost.rounded(Roost.TILE, dp(16f).toFloat(), borderColor, dp(if (ringed) 2f else 1f))
             val s = dp(58f)
             layoutParams = LinearLayout.LayoutParams(s, s)
         }
@@ -289,6 +292,7 @@ class MainActivity : Activity() {
                 val p = dp(16f); setPadding(p, p, p, p)
             } else {
                 setImageDrawable(icon)
+                iconTint?.let { setColorFilter(it) }
                 val p = dp(13f); setPadding(p, p, p, p)
             }
             layoutParams = FrameLayout.LayoutParams(
@@ -327,7 +331,7 @@ class MainActivity : Activity() {
         layoutParams = LinearLayout.LayoutParams(1, heightPx)
     }
 
-    // --- App resolution ---------------------------------------------------------------------
+    // --- Resolution / launching -------------------------------------------------------------
 
     private fun appIcon(pkg: String): Drawable? =
         try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null }
@@ -336,6 +340,13 @@ class MainActivity : Activity() {
         packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
     } catch (e: PackageManager.NameNotFoundException) {
         null
+    }
+
+    private fun webIcon(): Drawable? =
+        try { resources.getDrawable(R.drawable.ic_web, theme)?.mutate() } catch (e: Exception) { null }
+
+    private fun openWebApp(url: String) {
+        startActivity(Intent(this, WebAppActivity::class.java).putExtra(WebAppActivity.EXTRA_URL, url))
     }
 
     private fun launchAgent(): Boolean = launchPackage(Prefs.agentPkg(this))
@@ -350,5 +361,9 @@ class MainActivity : Activity() {
             Toast.makeText(this, getString(R.string.not_installed, pkg), Toast.LENGTH_SHORT).show()
             false
         }
+    }
+
+    companion object {
+        private val WEB_ICON_TINT = 0xFFD6CDBF.toInt()
     }
 }

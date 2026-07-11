@@ -2,6 +2,11 @@ package rocks.stump.roost
 
 import android.content.Context
 import android.content.SharedPreferences
+import org.json.JSONArray
+import org.json.JSONObject
+
+/** A user-added web app: a name + URL that opens fullscreen in a WebView. */
+data class WebApp(val name: String, val url: String)
 
 /**
  * Thin typed wrapper over SharedPreferences. All launcher state lives here so both
@@ -32,6 +37,8 @@ object Prefs {
     private const val K_PENDING_BOOT = "pending_boot_launch"
     private const val K_ACCENT = "accent"
     private const val K_WALLPAPER_APPLIED = "wallpaper_applied"
+    private const val K_AGENT_NAME = "agent_name"
+    private const val K_WEB_APPS = "web_apps"
 
     private fun sp(c: Context): SharedPreferences =
         c.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -65,4 +72,37 @@ object Prefs {
     /** Whether we've already painted the matching wallpaper once (first-run auto-apply). */
     fun wallpaperApplied(c: Context): Boolean = sp(c).getBoolean(K_WALLPAPER_APPLIED, false)
     fun setWallpaperApplied(c: Context, v: Boolean) = sp(c).edit().putBoolean(K_WALLPAPER_APPLIED, v).apply()
+
+    /** The agent's name (e.g. its username). Blank falls back to "roost" / "your agent". */
+    fun agentName(c: Context): String = sp(c).getString(K_AGENT_NAME, "") ?: ""
+    fun setAgentName(c: Context, v: String) = sp(c).edit().putString(K_AGENT_NAME, v).apply()
+
+    /** User-added web apps (self-hosted dashboards, etc.), each opening fullscreen in a WebView. */
+    fun webApps(c: Context): MutableList<WebApp> {
+        val arr = JSONArray(sp(c).getString(K_WEB_APPS, "[]") ?: "[]")
+        val out = mutableListOf<WebApp>()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            val url = o.optString("url")
+            if (url.isNotBlank()) out.add(WebApp(o.optString("name").ifBlank { url }, url))
+        }
+        return out
+    }
+
+    fun setWebApps(c: Context, apps: List<WebApp>) {
+        val arr = JSONArray()
+        apps.forEach { arr.put(JSONObject().put("name", it.name).put("url", it.url)) }
+        sp(c).edit().putString(K_WEB_APPS, arr.toString()).apply()
+    }
+
+    fun addWebApp(c: Context, name: String, url: String) {
+        val list = webApps(c)
+        list.removeAll { it.url == url }
+        list.add(WebApp(name.ifBlank { url }, url))
+        setWebApps(c, list)
+    }
+
+    fun removeWebApp(c: Context, url: String) {
+        setWebApps(c, webApps(c).filterNot { it.url == url })
+    }
 }

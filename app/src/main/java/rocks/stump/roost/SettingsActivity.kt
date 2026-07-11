@@ -77,6 +77,24 @@ class SettingsActivity : Activity() {
             }
         })
 
+        // --- Agent name ---
+        col.addView(header(getString(R.string.settings_agent_name)))
+        val nameEdit = EditText(this).apply {
+            setText(Prefs.agentName(this@SettingsActivity))
+            hint = getString(R.string.agent_name_hint)
+            inputType = InputType.TYPE_CLASS_TEXT
+            setTextColor(Roost.TEXT)
+            setHintTextColor(Roost.MUTED)
+        }
+        col.addView(nameEdit)
+        col.addView(Button(this).apply {
+            text = getString(R.string.settings_pkg_save)
+            setOnClickListener {
+                Prefs.setAgentName(this@SettingsActivity, nameEdit.text.toString().trim())
+                Toast.makeText(this@SettingsActivity, R.string.saved, Toast.LENGTH_SHORT).show()
+            }
+        })
+
         // --- Featured agent app ---
         col.addView(header(getString(R.string.settings_pkg)))
         val pkgEdit = EditText(this).apply {
@@ -120,6 +138,53 @@ class SettingsActivity : Activity() {
                 })
             })
         }
+
+        // --- Web apps (self-hosted dashboards, etc.) ---
+        col.addView(header(getString(R.string.settings_webapps)))
+        for (wa in Prefs.webApps(this)) {
+            col.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(6f), 0, dp(6f))
+                addView(TextView(this@SettingsActivity).apply {
+                    text = "${wa.name}\n${wa.url}"
+                    setTextColor(Roost.MUTED)
+                    textSize = 14f
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                addView(Button(this@SettingsActivity).apply {
+                    text = getString(R.string.remove)
+                    setOnClickListener {
+                        Prefs.removeWebApp(this@SettingsActivity, wa.url)
+                        recreate()
+                    }
+                })
+            })
+        }
+        val waName = EditText(this).apply {
+            hint = getString(R.string.webapp_name_hint)
+            inputType = InputType.TYPE_CLASS_TEXT
+            setTextColor(Roost.TEXT)
+            setHintTextColor(Roost.MUTED)
+        }
+        val waUrl = EditText(this).apply {
+            hint = getString(R.string.webapp_url_hint)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setTextColor(Roost.TEXT)
+            setHintTextColor(Roost.MUTED)
+        }
+        col.addView(waName)
+        col.addView(waUrl)
+        col.addView(Button(this).apply {
+            text = getString(R.string.webapp_add)
+            setOnClickListener {
+                val url = normalizeUrl(waUrl.text.toString())
+                if (url.isNotEmpty()) {
+                    Prefs.addWebApp(this@SettingsActivity, waName.text.toString().trim(), url)
+                    recreate()
+                }
+            }
+        })
 
         col.addView(TextView(this).apply {
             text = getString(R.string.open_android_settings)
@@ -205,5 +270,15 @@ class SettingsActivity : Activity() {
         setTextColor(Roost.TEXT)
         setPadding(0, dp(8f), 0, dp(8f))
         setOnCheckedChangeListener { _, c -> onChange(c) }
+    }
+
+    /** Default a bare host to https:// so web apps "just work" from a pasted address. */
+    private fun normalizeUrl(raw: String): String {
+        val u = raw.trim()
+        return when {
+            u.isEmpty() -> ""
+            u.startsWith("http://") || u.startsWith("https://") -> u
+            else -> "https://$u"
+        }
     }
 }

@@ -3,6 +3,7 @@
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Enumerate other launchable apps for the favorites picker (Android 11+ package visibility). -->
     <queries>
@@ -37,6 +38,11 @@
             android:name=".SettingsActivity"
             android:exported="false"
             android:label="@string/settings_title" />
+
+        <activity
+            android:name=".WebAppActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <receiver
             android:name=".BootReceiver"

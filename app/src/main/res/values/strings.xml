@@ -3,6 +3,7 @@
     <string name="settings_title">Roost settings</string>
 
     <string name="greeting_home">your agent is home</string>
+    <string name="greeting_named">%1$s is home</string>
     <string name="featured">Featured</string>
     <string name="featured_subtitle">tap to open your agent</string>
     <string name="add">Add</string>
@@ -28,6 +29,15 @@
     <string name="settings_pkg">Featured agent app (package)</string>
     <string name="settings_pkg_save">Save</string>
     <string name="saved">Saved</string>
+
+    <string name="settings_agent_name">Agent name</string>
+    <string name="agent_name_hint">e.g. your agent\'s username</string>
+
+    <string name="settings_webapps">Web apps</string>
+    <string name="webapp_name_hint">Name (e.g. Homarr)</string>
+    <string name="webapp_url_hint">https://dashboard.example.com</string>
+    <string name="webapp_add">Add web app</string>
+    <string name="remove">Remove</string>
 
     <string name="settings_favorites">Favorites (shown on the grid)</string>
     <string name="open_android_settings">Open Android Settings</string>
