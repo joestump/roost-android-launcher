@@ -23,7 +23,14 @@ Read these before making architectural changes. Current set:
 - **ADR-0002 — Pluggable action-button providers.** Uniform `ActionButton(kind, key, title, a, b)` model;
   each provider is a stateless object with scan + invoke. First providers: Android app-shortcuts, Home
   Assistant scenes. Governs SPEC-0001.
+- **ADR-0003 — Icon rendering strategy.** Framework-only icon fetch/cache + hand-rolled SVG-path renderer.
+- **ADR-0004 — Generalized HTTP-action provider.** Adds `ActionKind.HTTP`: any endpoint (method + URL +
+  headers + None/Bearer/HMAC auth + `{{var}}` JSON body) is one saved instance in a tolerant `Prefs` JSON
+  collection keyed by id; firing shows an on-tile `idle → pending → success/queued → error → timeout`
+  state machine (fixed semantic ramp — Sage/Amber/Clay, not the accent), replacing the Toast. HASS scenes
+  become an authoring path. HMAC uses platform `javax.crypto.Mac`. Governs SPEC-0002.
 - **SPEC-0001 — Action Buttons** (`docs/openspec/action-buttons/`).
+- **SPEC-0002 — HTTP Actions** (`docs/openspec/http-actions/`).
 
 When implementing code governed by an artifact, leave a governing comment:
 `// Governing: ADR-0002 (pluggable action-button providers), SPEC-0001 REQ "Requirement Name"`.
