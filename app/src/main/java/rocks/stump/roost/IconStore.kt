@@ -1,9 +1,14 @@
 package rocks.stump.roost
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
@@ -44,6 +49,71 @@ object IconStore {
         } catch (e: Exception) {
             null
         }
+    }
+
+    // --- SVG sources via Iconify (Simple Icons, Heroicons) — ADR-0003 in-house renderer ---
+
+    /** Icon names in an Iconify collection (e.g. `simple-icons`, `heroicons-solid`). */
+    fun iconifyIndex(prefix: String): List<String> {
+        val json = httpText("https://api.iconify.design/collection?prefix=$prefix") ?: return emptyList()
+        return try {
+            val o = JSONObject(json)
+            val names = mutableListOf<String>()
+            o.optJSONArray("uncategorized")?.let { for (k in 0 until it.length()) names.add(it.getString(k)) }
+            o.optJSONObject("categories")?.let { cats ->
+                val keys = cats.keys()
+                while (keys.hasNext()) {
+                    val cat = keys.next()
+                    cats.optJSONArray(cat)?.let { arr -> for (k in 0 until arr.length()) names.add(arr.getString(k)) }
+                }
+            }
+            names.distinct().sorted()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    fun iconifyUrl(prefix: String, name: String): String = "https://api.iconify.design/$prefix/$name.svg"
+
+    /** Fetch an SVG, render its `<path>`s (filled, or stroked for outline sets) tinted, and cache. */
+    fun cacheSvg(context: Context, url: String, tint: Int): File? {
+        val svg = httpText(url) ?: return null
+        val paths = Regex("<path\\b[^>]*\\bd=\"([^\"]+)\"", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+            .findAll(svg).map { it.groupValues[1] }.toList()
+        if (paths.isEmpty()) return null
+        val vb = Regex("viewBox=\"([-\\d.\\s]+)\"").find(svg)?.groupValues?.get(1)?.trim()?.split(Regex("\\s+"))
+        val vbx = vb?.getOrNull(0)?.toFloatOrNull() ?: 0f
+        val vby = vb?.getOrNull(1)?.toFloatOrNull() ?: 0f
+        val vbw = vb?.getOrNull(2)?.toFloatOrNull() ?: 24f
+        val vbh = vb?.getOrNull(3)?.toFloatOrNull() ?: 24f
+        val outline = svg.contains("fill=\"none\"") && svg.contains("stroke=\"")
+        val strokeW = Regex("stroke-width=\"([\\d.]+)\"").find(svg)?.groupValues?.get(1)?.toFloatOrNull() ?: 2f
+        val evenOdd = svg.contains("evenodd")
+
+        val size = 96
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val scale = size / maxOf(vbw, vbh)
+        canvas.translate((size - vbw * scale) / 2f - vbx * scale, (size - vbh * scale) / 2f - vby * scale)
+        canvas.scale(scale, scale)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tint }
+        if (outline) {
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = strokeW
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeJoin = Paint.Join.ROUND
+        } else {
+            paint.style = Paint.Style.FILL
+        }
+        for (d in paths) {
+            val p = SvgPath.parse(d)
+            p.fillType = if (evenOdd) Path.FillType.EVEN_ODD else Path.FillType.WINDING
+            canvas.drawPath(p, paint)
+        }
+        val dir = File(context.filesDir, "icons").apply { mkdirs() }
+        val file = File(dir, "ic_" + Integer.toHexString((url + tint).hashCode()) + ".png")
+        return try {
+            FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            file
+        } catch (e: Exception) { null }
     }
 
     fun drawableFor(context: Context, path: String): Drawable? {

@@ -472,11 +472,15 @@ class MainActivity : Activity() {
             p.menu.add(0, 1, 0, getString(R.string.tile_hide))
             p.menu.add(0, 2, 1, getString(R.string.tile_delete))
             p.menu.add(0, 3, 2, getString(R.string.tile_change_icon))
+            if (Prefs.iconOverride(this, key) != null) {
+                p.menu.add(0, 4, 3, getString(R.string.tile_reset_icon))
+            }
             p.setOnMenuItemClickListener { mi ->
                 when (mi.itemId) {
                     1 -> { Prefs.setHidden(this, key, true); render(); true }
                     2 -> { onDelete(); render(); true }
                     3 -> { openIconPicker(key); true }
+                    4 -> { Prefs.setIconOverride(this, key, null); render(); true }
                     else -> false
                 }
             }

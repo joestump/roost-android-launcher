@@ -6,30 +6,44 @@ import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
 import android.util.TypedValue
+import android.view.Gravity
+import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import java.io.File
 
 /**
- * Remote icon picker (Gitea issue #3, ADR-0003). v1: selfh.st raster icons — search a name, tap to
- * fetch + cache the PNG and set it as the tile's icon override. Simple Icons / Iconify (SVG) are a
- * follow-up requiring the in-house SvgPath renderer.
+ * Remote icon picker (Gitea issue #3, ADR-0003). Three sources: selfh.st (raster PNG via
+ * BitmapFactory) and Simple Icons + Heroicons (SVG, rendered by the in-house [SvgPath] parser).
+ * Search a name, tap to fetch + cache the icon and set it as the tile's icon override.
  *
  * Governing: ADR-0003 (icon rendering strategy), Gitea issue #3.
  */
 class IconPickerActivity : Activity() {
 
-    private lateinit var key: String
-    private var names: List<String> = emptyList()
-    private lateinit var results: LinearLayout
-    private lateinit var status: TextView
+    private data class Source(val label: String, val svg: Boolean, val prefix: String)
 
-    private fun dp(v: Float) =
-        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).toInt()
+    private val sources = listOf(
+        Source("selfh.st", false, ""),
+        Source("Simple Icons", true, "simple-icons"),
+        Source("Heroicons", true, "heroicons-solid")
+    )
+
+    private var current = 0
+    private val indices = HashMap<Int, List<String>>()
+    private var query = ""
+
+    private lateinit var key: String
+    private lateinit var sourceRow: LinearLayout
+    private lateinit var status: TextView
+    private lateinit var results: LinearLayout
 
     private val accent get() = Prefs.accent(this)
+    private fun dp(v: Float) =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,11 +57,13 @@ class IconPickerActivity : Activity() {
             text = getString(R.string.icon_picker_title)
             setTextColor(Roost.TEXT); textSize = 22f; typeface = Roost.medium()
         })
-        col.addView(TextView(this).apply {
-            text = getString(R.string.icon_source_selfhst)
-            setTextColor(accent); textSize = 12f; letterSpacing = 0.08f
-            typeface = Roost.medium(); setPadding(0, dp(14f), 0, dp(6f))
-        })
+
+        sourceRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(14f), 0, dp(10f))
+        }
+        col.addView(sourceRow)
+
         val search = EditText(this).apply {
             hint = getString(R.string.icon_search_hint)
             inputType = InputType.TYPE_CLASS_TEXT
@@ -55,7 +71,6 @@ class IconPickerActivity : Activity() {
         }
         col.addView(search)
         status = TextView(this).apply {
-            text = getString(R.string.icon_loading)
             setTextColor(Roost.MUTED); textSize = 13f; setPadding(0, dp(10f), 0, dp(6f))
         }
         col.addView(status)
@@ -68,23 +83,59 @@ class IconPickerActivity : Activity() {
         })
 
         search.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) = renderResults(s?.toString()?.trim().orEmpty())
+            override fun afterTextChanged(s: Editable?) { query = s?.toString()?.trim().orEmpty(); renderResults() }
             override fun beforeTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {}
             override fun onTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {}
         })
 
+        buildSourceChips()
+        loadIndex(0)
+    }
+
+    private fun buildSourceChips() {
+        sourceRow.removeAllViews()
+        sources.forEachIndexed { i, src ->
+            val selected = i == current
+            sourceRow.addView(TextView(this).apply {
+                text = src.label
+                textSize = 12.5f
+                gravity = Gravity.CENTER
+                setTextColor(if (selected) Roost.DOCK else Roost.TEXT)
+                background = Roost.rounded(
+                    if (selected) accent else Roost.TILE, dp(18f).toFloat(),
+                    if (selected) accent else Roost.HAIRLINE, dp(1f)
+                )
+                setPadding(dp(12f), dp(7f), dp(12f), dp(7f))
+                setOnClickListener { if (current != i) { current = i; buildSourceChips(); loadIndex(i) } }
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { rightMargin = dp(8f) })
+        }
+    }
+
+    private fun loadIndex(idx: Int) {
+        results.removeAllViews()
+        indices[idx]?.let { renderResults(); return }
+        status.text = getString(R.string.icon_loading)
+        val src = sources[idx]
         Thread {
-            val idx = runCatching { IconStore.selfhstIndex() }.getOrDefault(emptyList())
+            val list = runCatching {
+                if (src.svg) IconStore.iconifyIndex(src.prefix) else IconStore.selfhstIndex()
+            }.getOrDefault(emptyList())
             runOnUiThread {
-                names = idx
-                status.text = if (idx.isEmpty()) getString(R.string.icon_none)
-                else getString(R.string.icon_search_ready)
+                if (current == idx) {
+                    indices[idx] = list
+                    status.text = if (list.isEmpty()) getString(R.string.icon_none)
+                    else getString(R.string.icon_search_ready)
+                    renderResults()
+                }
             }
         }.start()
     }
 
-    private fun renderResults(query: String) {
+    private fun renderResults() {
         results.removeAllViews()
+        val names = indices[current] ?: return
         if (query.length < 2) {
             status.text = getString(R.string.icon_search_ready)
             return
@@ -103,8 +154,10 @@ class IconPickerActivity : Activity() {
 
     private fun apply(name: String) {
         status.text = getString(R.string.icon_applying)
+        val src = sources[current]
         Thread {
-            val file = IconStore.cacheRaster(this, IconStore.selfhstPngUrl(name))
+            val file: File? = if (src.svg) IconStore.cacheSvg(this, IconStore.iconifyUrl(src.prefix, name), SVG_TINT)
+            else IconStore.cacheRaster(this, IconStore.selfhstPngUrl(name))
             runOnUiThread {
                 if (file != null) {
                     Prefs.setIconOverride(this, key, file.path)
@@ -119,5 +172,6 @@ class IconPickerActivity : Activity() {
 
     companion object {
         const val EXTRA_KEY = "key"
+        private val SVG_TINT = 0xFFE8E1D5.toInt()
     }
 }

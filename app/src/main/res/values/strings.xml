@@ -11,6 +11,7 @@
     <string name="tile_hide">Hide</string>
     <string name="tile_delete">Delete</string>
     <string name="tile_change_icon">Change icon</string>
+    <string name="tile_reset_icon">Reset icon</string>
     <string name="tile_restore">Restore</string>
     <string name="settings_hidden">Hidden</string>
 
