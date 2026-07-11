@@ -8,6 +8,9 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.Uri
 import android.os.BatteryManager
 import android.view.Gravity
 import android.view.View
@@ -37,6 +40,7 @@ class MainActivity : Activity() {
 
     private var greetingLabel: TextView? = null
     private var statusLabel: TextView? = null
+    private var vpnChipView: TextView? = null
 
     private var batteryRegistered = false
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -103,9 +107,11 @@ class MainActivity : Activity() {
         col.addView(mascot(dp(128f)))
         col.addView(greetingView())
         col.addView(statusView())
+        vpnChip()?.let { col.addView(it) }
         col.addView(spacer(dp(24f)))
         col.addView(utilityGrid())
-        col.addView(appsSettingsLink(dp(26f)))
+        col.addView(weightedSpacer())
+        col.addView(appsSettingsLink(dp(16f)))
 
         setContentView(ScrollView(this).apply {
             background = Roost.dockBackground(this@MainActivity)
@@ -247,9 +253,9 @@ class MainActivity : Activity() {
             grid.addView(tile(wa.name, webIcon(), cell, iconTint = WEB_ICON_TINT) { openWebApp(wa.url) })
         }
 
-        // Add.
-        grid.addView(tile(getString(R.string.add), null, cell, isAdd = true) {
-            startActivity(Intent(this, SettingsActivity::class.java))
+        // Store — get more apps.
+        grid.addView(tile(getString(R.string.store), null, cell, isAdd = true) {
+            openPlayStore()
         })
 
         grid.layoutParams = LinearLayout.LayoutParams(
@@ -331,6 +337,78 @@ class MainActivity : Activity() {
         layoutParams = LinearLayout.LayoutParams(1, heightPx)
     }
 
+    /** Expands to fill leftover space, pushing "Apps & settings" to the bottom (with fillViewport). */
+    private fun weightedSpacer(): View = View(this).apply {
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+    }
+
+    // --- VPN (WireGuard) --------------------------------------------------------------------
+
+    /** A tappable "vpn up/off" pill, centered. Only shown when WireGuard is installed. */
+    private fun vpnChip(): View? {
+        if (!isInstalled(WIREGUARD_PKG)) return null
+        val chip = TextView(this).apply {
+            textSize = 11f
+            typeface = Typeface.MONOSPACE
+            gravity = Gravity.CENTER
+            setPadding(dp(12f), dp(5f), dp(12f), dp(5f))
+            isClickable = true
+            setOnClickListener { toggleVpn() }
+        }
+        vpnChipView = chip
+        applyVpnChip(chip)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(10f), 0, 0)
+            addView(chip)
+        }
+    }
+
+    private fun applyVpnChip(chip: TextView) {
+        val up = vpnUp()
+        chip.text = getString(if (up) R.string.vpn_up else R.string.vpn_off)
+        chip.setTextColor(if (up) accent else Roost.MUTED)
+        chip.background = Roost.rounded(
+            if (up) Roost.soft(accent) else Roost.TILE, dp(20f).toFloat(),
+            if (up) Roost.soft(accent) else Roost.HAIRLINE, dp(1f)
+        )
+    }
+
+    private fun refreshVpnChip() = vpnChipView?.let { applyVpnChip(it) }
+
+    private fun vpnUp(): Boolean {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return false
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+    }
+
+    private fun toggleVpn() {
+        val tunnel = Prefs.wireguardTunnel(this).trim()
+        if (tunnel.isEmpty()) {
+            launchPackage(WIREGUARD_PKG) // no tunnel configured → just open WireGuard
+            return
+        }
+        val action = if (vpnUp()) "$WIREGUARD_PKG.action.SET_TUNNEL_DOWN"
+        else "$WIREGUARD_PKG.action.SET_TUNNEL_UP"
+        sendBroadcast(Intent(action).setPackage(WIREGUARD_PKG).putExtra("tunnel", tunnel))
+        vpnChipView?.postDelayed({ refreshVpnChip() }, 1200)
+    }
+
+    private fun openPlayStore() {
+        val i = packageManager.getLaunchIntentForPackage("com.android.vending")
+            ?: Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=apps"))
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            startActivity(i)
+        } catch (e: Exception) {
+            Toast.makeText(this, getString(R.string.not_installed, "Play Store"), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun isInstalled(pkg: String): Boolean =
+        try { packageManager.getApplicationInfo(pkg, 0); true } catch (e: Exception) { false }
+
     // --- Resolution / launching -------------------------------------------------------------
 
     private fun appIcon(pkg: String): Drawable? =
@@ -365,5 +443,6 @@ class MainActivity : Activity() {
 
     companion object {
         private val WEB_ICON_TINT = 0xFFD6CDBF.toInt()
+        private const val WIREGUARD_PKG = "com.wireguard.android"
     }
 }

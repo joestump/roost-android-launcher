@@ -11,8 +11,8 @@ android {
         applicationId = "rocks.stump.roost"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.3.1"
+        versionCode = 7
+        versionName = "0.4.0"
     }
 
     buildTypes {

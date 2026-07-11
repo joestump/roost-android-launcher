@@ -39,6 +39,7 @@ object Prefs {
     private const val K_WALLPAPER_APPLIED = "wallpaper_applied"
     private const val K_AGENT_NAME = "agent_name"
     private const val K_WEB_APPS = "web_apps"
+    private const val K_WG_TUNNEL = "wg_tunnel"
 
     private fun sp(c: Context): SharedPreferences =
         c.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -76,6 +77,10 @@ object Prefs {
     /** The agent's name (e.g. its username). Blank falls back to "roost" / "your agent". */
     fun agentName(c: Context): String = sp(c).getString(K_AGENT_NAME, "") ?: ""
     fun setAgentName(c: Context, v: String) = sp(c).edit().putString(K_AGENT_NAME, v).apply()
+
+    /** WireGuard tunnel name for the one-tap VPN toggle. Blank → the VPN chip just opens WireGuard. */
+    fun wireguardTunnel(c: Context): String = sp(c).getString(K_WG_TUNNEL, "") ?: ""
+    fun setWireguardTunnel(c: Context, v: String) = sp(c).edit().putString(K_WG_TUNNEL, v).apply()
 
     /** User-added web apps (self-hosted dashboards, etc.), each opening fullscreen in a WebView. */
     fun webApps(c: Context): MutableList<WebApp> {

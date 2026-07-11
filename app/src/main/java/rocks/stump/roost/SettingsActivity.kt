@@ -188,6 +188,30 @@ class SettingsActivity : Activity() {
             }
         })
 
+        // --- VPN (WireGuard) ---
+        col.addView(header(getString(R.string.settings_wireguard)))
+        val wgEdit = EditText(this).apply {
+            setText(Prefs.wireguardTunnel(this@SettingsActivity))
+            hint = getString(R.string.wg_tunnel_hint)
+            inputType = InputType.TYPE_CLASS_TEXT
+            setTextColor(Roost.TEXT)
+            setHintTextColor(Roost.MUTED)
+        }
+        col.addView(wgEdit)
+        col.addView(Button(this).apply {
+            text = getString(R.string.settings_pkg_save)
+            setOnClickListener {
+                Prefs.setWireguardTunnel(this@SettingsActivity, wgEdit.text.toString().trim())
+                Toast.makeText(this@SettingsActivity, R.string.saved, Toast.LENGTH_SHORT).show()
+            }
+        })
+        col.addView(TextView(this).apply {
+            text = getString(R.string.wg_note)
+            setTextColor(Roost.MUTED)
+            textSize = 12f
+            setPadding(0, dp(6f), 0, 0)
+        })
+
         col.addView(TextView(this).apply {
             text = getString(R.string.open_android_settings)
             setTextColor(accent)
