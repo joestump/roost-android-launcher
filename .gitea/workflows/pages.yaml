@@ -1,0 +1,44 @@
+# Builds the Docusaurus docs (docs-site/) and publishes to Gitea Pages via Garage S3.
+# Live at: https://joestump.pages.stump.rocks/roost-android-launcher/
+# Requires repo secrets PAGES_ACCESS_KEY_ID / PAGES_SECRET_ACCESS_KEY.
+name: Deploy Docs to Gitea Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs-site/**'
+      - '.gitea/workflows/pages.yaml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: docs-site
+        run: npm ci
+
+      - name: Build
+        working-directory: docs-site
+        run: npm run build
+        env:
+          SITE_URL: https://joestump.pages.stump.rocks
+
+      - name: Deploy to Gitea Pages
+        uses: https://gitea.stump.rocks/stumpcloud/garage-pages-deploy@v1
+        with:
+          source_dir: docs-site/build
+          access_key_id: ${{ secrets.PAGES_ACCESS_KEY_ID }}
+          secret_access_key: ${{ secrets.PAGES_SECRET_ACCESS_KEY }}

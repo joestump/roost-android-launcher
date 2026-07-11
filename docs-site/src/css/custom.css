@@ -1,0 +1,39 @@
+/* Roost — warm-dark palette with a honey accent, matching the launcher. */
+
+:root {
+  --ifm-color-primary: #c9821f;
+  --ifm-color-primary-dark: #b5751c;
+  --ifm-color-primary-darker: #aa6f1a;
+  --ifm-color-primary-darkest: #8c5b15;
+  --ifm-color-primary-light: #dd9022;
+  --ifm-color-primary-lighter: #e79a2e;
+  --ifm-color-primary-lightest: #eab057;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(231, 164, 78, 0.12);
+}
+
+/* Dark mode is the default; tuned to the Roost dock palette. */
+[data-theme='dark'] {
+  --ifm-color-primary: #e7a44e;
+  --ifm-color-primary-dark: #e39a37;
+  --ifm-color-primary-darker: #e0942b;
+  --ifm-color-primary-darkest: #b97a1f;
+  --ifm-color-primary-light: #eaae65;
+  --ifm-color-primary-lighter: #edb471;
+  --ifm-color-primary-lightest: #f3c896;
+
+  --ifm-background-color: #14110d;
+  --ifm-background-surface-color: #1c1813;
+  --ifm-navbar-background-color: #1c1813;
+  --ifm-footer-background-color: #120f09;
+  --ifm-font-color-base: #f3eee4;
+  --ifm-heading-color: #f3eee4;
+  --ifm-toc-border-color: #2a241c;
+  --ifm-color-content-secondary: #a29a8c;
+  --docusaurus-highlighted-code-line-bg: rgba(231, 164, 78, 0.16);
+}
+
+.hero--primary {
+  --ifm-hero-background-color: #1c1813;
+  --ifm-hero-text-color: #f3eee4;
+}
