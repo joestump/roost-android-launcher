@@ -8,6 +8,12 @@
     <string name="featured_subtitle">tap to open your agent</string>
     <string name="add">Add</string>
     <string name="store">Store</string>
+    <string name="tile_hide">Hide</string>
+    <string name="tile_delete">Delete</string>
+    <string name="tile_change_icon">Change icon</string>
+    <string name="tile_restore">Restore</string>
+    <string name="icon_picker_soon">Icon picker coming soon</string>
+    <string name="settings_hidden">Hidden</string>
     <string name="vpn_up">vpn up</string>
     <string name="vpn_off">vpn off</string>
 

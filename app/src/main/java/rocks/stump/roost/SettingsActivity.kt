@@ -201,6 +201,32 @@ class SettingsActivity : Activity() {
             }
         })
 
+        // --- Hidden items (restore) ---
+        val hidden = Prefs.hiddenItems(this)
+        if (hidden.isNotEmpty()) {
+            col.addView(header(getString(R.string.settings_hidden)))
+            for (key in hidden) {
+                col.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(6f), 0, dp(6f))
+                    addView(TextView(this@SettingsActivity).apply {
+                        text = hiddenLabel(key)
+                        setTextColor(Roost.MUTED)
+                        textSize = 14f
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    })
+                    addView(Button(this@SettingsActivity).apply {
+                        text = getString(R.string.tile_restore)
+                        setOnClickListener {
+                            Prefs.setHidden(this@SettingsActivity, key, false)
+                            recreate()
+                        }
+                    })
+                })
+            }
+        }
+
         // --- VPN (WireGuard) ---
         col.addView(header(getString(R.string.settings_wireguard)))
         val wgEdit = EditText(this).apply {
@@ -321,6 +347,16 @@ class SettingsActivity : Activity() {
         )
         setPadding(0, dp(8f), 0, dp(8f))
         setOnCheckedChangeListener { _, c -> onChange(c) }
+    }
+
+    private fun hiddenLabel(key: String): String = when {
+        key.startsWith("app:") -> {
+            val pkg = key.removePrefix("app:")
+            try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }
+            catch (e: Exception) { pkg }
+        }
+        key.startsWith("web:") -> key.removePrefix("web:")
+        else -> key.substringAfterLast(":").ifBlank { key }
     }
 
     /** Default a bare host to https:// so web apps "just work" from a pasted address. */

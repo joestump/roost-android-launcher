@@ -21,6 +21,7 @@ import android.widget.GridLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -269,17 +270,25 @@ class MainActivity : Activity() {
             launchAgent()
         })
 
-        // Installed favorites (minus the agent), alphabetical.
+        // Installed favorites (minus the agent + hidden), alphabetical.
         Prefs.favorites(this)
-            .filter { it != agentPkg }
+            .filter { it != agentPkg && !Prefs.isHidden(this, "app:$it") }
             .mapNotNull { pkg -> appLabel(pkg)?.let { pkg to it } }
             .sortedBy { it.second.lowercase() }
-            .forEach { (pkg, label) -> grid.addView(tile(label, appIcon(pkg), cell) { launchPackage(pkg) }) }
+            .forEach { (pkg, label) ->
+                val t = tile(label, appIcon(pkg), cell) { launchPackage(pkg) }
+                tileMenu(t, "app:$pkg") { uninstallApp(pkg) }
+                grid.addView(t)
+            }
 
         // Web apps — fullscreen WebView tiles.
-        Prefs.webApps(this).forEach { wa ->
-            grid.addView(tile(wa.name, webIcon(), cell, iconTint = WEB_ICON_TINT) { openWebApp(wa.url) })
-        }
+        Prefs.webApps(this)
+            .filter { !Prefs.isHidden(this, "web:${it.url}") }
+            .forEach { wa ->
+                val t = tile(wa.name, webIcon(), cell, iconTint = WEB_ICON_TINT) { openWebApp(wa.url) }
+                tileMenu(t, "web:${wa.url}") { Prefs.removeWebApp(this, wa.url) }
+                grid.addView(t)
+            }
 
         // Store — get more apps.
         grid.addView(tile(getString(R.string.store), null, cell, isAdd = true) {
@@ -447,18 +456,59 @@ class MainActivity : Activity() {
     private fun isInstalled(pkg: String): Boolean =
         try { packageManager.getApplicationInfo(pkg, 0); true } catch (e: Exception) { false }
 
+    // --- Long-press tile actions (Gitea issue #2) -------------------------------------------
+
+    private fun tileMenu(anchor: View, key: String, onDelete: () -> Unit) {
+        anchor.setOnLongClickListener {
+            val p = PopupMenu(this, anchor)
+            p.menu.add(0, 1, 0, getString(R.string.tile_hide))
+            p.menu.add(0, 2, 1, getString(R.string.tile_delete))
+            p.menu.add(0, 3, 2, getString(R.string.tile_change_icon))
+            p.setOnMenuItemClickListener { mi ->
+                when (mi.itemId) {
+                    1 -> { Prefs.setHidden(this, key, true); render(); true }
+                    2 -> { onDelete(); render(); true }
+                    3 -> { openIconPicker(key); true }
+                    else -> false
+                }
+            }
+            p.show()
+            true
+        }
+    }
+
+    private fun uninstallApp(pkg: String) {
+        try {
+            startActivity(
+                Intent(Intent.ACTION_DELETE, Uri.parse("package:$pkg"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (e: Exception) {
+            Toast.makeText(this, getString(R.string.action_failed, pkg), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun openIconPicker(key: String) {
+        // Wired to the remote icon picker in Gitea issue #3.
+        Toast.makeText(this, getString(R.string.icon_picker_soon), Toast.LENGTH_SHORT).show()
+    }
+
     // --- Action buttons (pluggable — see SPEC-0001) -----------------------------------------
 
     // Governing: ADR-0002 (pluggable action-button providers), SPEC-0001 REQ "Home-screen rendering"
     private fun actionRow(): View? {
-        val buttons = Prefs.actionButtons(this)
+        val buttons = Prefs.actionButtons(this).filter { !Prefs.isHidden(this, it.key) }
         if (buttons.isEmpty()) return null
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(2f), 0, dp(2f), 0)
         }
-        buttons.forEach { row.addView(actionPill(it)) }
+        buttons.forEach { b ->
+            val pill = actionPill(b)
+            tileMenu(pill, b.key) { Prefs.setActionEnabled(this, b, false) }
+            row.addView(pill)
+        }
         return HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             setPadding(0, dp(18f), 0, 0)

@@ -43,6 +43,7 @@ object Prefs {
     private const val K_WG_TUNNEL = "wg_tunnel"
     private const val K_HASS_ACCOUNTS = "hass_accounts"
     private const val K_ACTION_BUTTONS = "action_buttons"
+    private const val K_HIDDEN = "hidden_items"
 
     private fun sp(c: Context): SharedPreferences =
         c.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -142,6 +143,19 @@ object Prefs {
             )
         }
         sp(c).edit().putString(K_ACTION_BUTTONS, arr.toString()).apply()
+    }
+
+    // --- Hidden items (long-press → Hide; recoverable) ---
+
+    fun hiddenItems(c: Context): MutableSet<String> =
+        LinkedHashSet(sp(c).getStringSet(K_HIDDEN, emptySet()) ?: emptySet())
+
+    fun isHidden(c: Context, key: String): Boolean = hiddenItems(c).contains(key)
+
+    fun setHidden(c: Context, key: String, hidden: Boolean) {
+        val cur = hiddenItems(c)
+        if (hidden) cur.add(key) else cur.remove(key)
+        sp(c).edit().putStringSet(K_HIDDEN, cur).apply()
     }
 
     fun isActionEnabled(c: Context, key: String): Boolean = actionButtons(c).any { it.key == key }
