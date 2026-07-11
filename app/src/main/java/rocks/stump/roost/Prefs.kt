@@ -44,6 +44,7 @@ object Prefs {
     private const val K_HASS_ACCOUNTS = "hass_accounts"
     private const val K_ACTION_BUTTONS = "action_buttons"
     private const val K_HIDDEN = "hidden_items"
+    private const val K_ICON_OVERRIDES = "icon_overrides"
 
     private fun sp(c: Context): SharedPreferences =
         c.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -156,6 +157,19 @@ object Prefs {
         val cur = hiddenItems(c)
         if (hidden) cur.add(key) else cur.remove(key)
         sp(c).edit().putStringSet(K_HIDDEN, cur).apply()
+    }
+
+    // --- Icon overrides (long-press → Change icon; key → cached file path) ---
+
+    fun iconOverride(c: Context, key: String): String? {
+        val o = JSONObject(sp(c).getString(K_ICON_OVERRIDES, "{}") ?: "{}")
+        return if (o.has(key)) o.optString(key) else null
+    }
+
+    fun setIconOverride(c: Context, key: String, path: String?) {
+        val o = JSONObject(sp(c).getString(K_ICON_OVERRIDES, "{}") ?: "{}")
+        if (path == null) o.remove(key) else o.put(key, path)
+        sp(c).edit().putString(K_ICON_OVERRIDES, o.toString()).apply()
     }
 
     fun isActionEnabled(c: Context, key: String): Boolean = actionButtons(c).any { it.key == key }

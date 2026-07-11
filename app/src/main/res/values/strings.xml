@@ -12,8 +12,17 @@
     <string name="tile_delete">Delete</string>
     <string name="tile_change_icon">Change icon</string>
     <string name="tile_restore">Restore</string>
-    <string name="icon_picker_soon">Icon picker coming soon</string>
     <string name="settings_hidden">Hidden</string>
+
+    <string name="icon_picker_title">Change icon</string>
+    <string name="icon_source_selfhst">selfh.st icons</string>
+    <string name="icon_search_hint">Search icons…</string>
+    <string name="icon_loading">Loading icon index…</string>
+    <string name="icon_search_ready">Type 2+ letters to search.</string>
+    <string name="icon_none">No matching icons.</string>
+    <string name="icon_applying">Applying…</string>
+    <string name="icon_applied">Icon updated</string>
+    <string name="icon_fetch_failed">Couldn\'t fetch that icon.</string>
     <string name="vpn_up">vpn up</string>
     <string name="vpn_off">vpn off</string>
 

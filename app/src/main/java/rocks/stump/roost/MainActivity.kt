@@ -266,9 +266,14 @@ class MainActivity : Activity() {
         val agentPkg = Prefs.agentPkg(this)
 
         // Featured agent — same tile size/style as the rest, marked with an accent ring.
-        grid.addView(tile(appLabel(agentPkg) ?: "Agent", appIcon(agentPkg), cell, ringed = true) {
-            launchAgent()
-        })
+        if (!Prefs.isHidden(this, "agent")) {
+            val at = tile(
+                appLabel(agentPkg) ?: "Agent",
+                overrideIcon("agent") ?: appIcon(agentPkg), cell, ringed = true
+            ) { launchAgent() }
+            tileMenu(at, "agent") { uninstallApp(agentPkg) }
+            grid.addView(at)
+        }
 
         // Installed favorites (minus the agent + hidden), alphabetical.
         Prefs.favorites(this)
@@ -276,7 +281,7 @@ class MainActivity : Activity() {
             .mapNotNull { pkg -> appLabel(pkg)?.let { pkg to it } }
             .sortedBy { it.second.lowercase() }
             .forEach { (pkg, label) ->
-                val t = tile(label, appIcon(pkg), cell) { launchPackage(pkg) }
+                val t = tile(label, overrideIcon("app:$pkg") ?: appIcon(pkg), cell) { launchPackage(pkg) }
                 tileMenu(t, "app:$pkg") { uninstallApp(pkg) }
                 grid.addView(t)
             }
@@ -285,7 +290,10 @@ class MainActivity : Activity() {
         Prefs.webApps(this)
             .filter { !Prefs.isHidden(this, "web:${it.url}") }
             .forEach { wa ->
-                val t = tile(wa.name, webIcon(), cell, iconTint = WEB_ICON_TINT) { openWebApp(wa.url) }
+                val ov = overrideIcon("web:${wa.url}")
+                val t = tile(wa.name, ov ?: webIcon(), cell, iconTint = if (ov != null) null else WEB_ICON_TINT) {
+                    openWebApp(wa.url)
+                }
                 tileMenu(t, "web:${wa.url}") { Prefs.removeWebApp(this, wa.url) }
                 grid.addView(t)
             }
@@ -489,8 +497,13 @@ class MainActivity : Activity() {
     }
 
     private fun openIconPicker(key: String) {
-        // Wired to the remote icon picker in Gitea issue #3.
-        Toast.makeText(this, getString(R.string.icon_picker_soon), Toast.LENGTH_SHORT).show()
+        startActivity(Intent(this, IconPickerActivity::class.java).putExtra(IconPickerActivity.EXTRA_KEY, key))
+    }
+
+    /** A user-chosen icon override for [key], or null. */
+    private fun overrideIcon(key: String): Drawable? {
+        val path = Prefs.iconOverride(this, key) ?: return null
+        return IconStore.drawableFor(this, path)
     }
 
     // --- Action buttons (pluggable — see SPEC-0001) -----------------------------------------
@@ -531,9 +544,10 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { rightMargin = dp(10f) }
         }
+        val ov = overrideIcon(b.key)
         pill.addView(ImageView(this).apply {
-            setImageDrawable(actionIcon(b))
-            if (b.kind == ActionKind.HASS_SCENE) setColorFilter(accent)
+            setImageDrawable(ov ?: actionIcon(b))
+            if (ov == null && b.kind == ActionKind.HASS_SCENE) setColorFilter(accent)
             val s = dp(20f)
             layoutParams = LinearLayout.LayoutParams(s, s)
         })

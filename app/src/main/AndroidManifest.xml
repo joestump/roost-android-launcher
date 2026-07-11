@@ -50,6 +50,11 @@
             android:exported="false"
             android:label="@string/actions_title" />
 
+        <activity
+            android:name=".IconPickerActivity"
+            android:exported="false"
+            android:label="@string/icon_picker_title" />
+
         <receiver
             android:name=".BootReceiver"
             android:exported="true">
