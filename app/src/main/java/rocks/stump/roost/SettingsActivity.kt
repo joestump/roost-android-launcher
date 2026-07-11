@@ -2,6 +2,7 @@ package rocks.stump.roost
 
 import android.app.Activity
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.os.Bundle
 import android.provider.Settings
@@ -125,6 +126,7 @@ class SettingsActivity : Activity() {
                 setPadding(0, dp(6f), 0, dp(6f))
                 addView(CheckBox(this@SettingsActivity).apply {
                     isChecked = favs.contains(pkg)
+                    buttonTintList = checkedCsl()
                     setOnCheckedChangeListener { _, checked ->
                         val cur = Prefs.favorites(this@SettingsActivity)
                         if (checked) cur.add(pkg) else cur.remove(pkg)
@@ -258,9 +260,16 @@ class SettingsActivity : Activity() {
         setPadding(0, dp(24f), 0, dp(8f))
     }
 
+    /** Checked=accent, unchecked=muted — so controls follow the Roost accent, not the system one. */
+    private fun checkedCsl(): ColorStateList {
+        val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+        return ColorStateList(states, intArrayOf(accent, Roost.MUTED))
+    }
+
     private fun radio(t: String) = RadioButton(this).apply {
         text = t
         setTextColor(Roost.TEXT)
+        buttonTintList = checkedCsl()
         id = View.generateViewId()
     }
 
@@ -268,6 +277,11 @@ class SettingsActivity : Activity() {
         text = t
         isChecked = initial
         setTextColor(Roost.TEXT)
+        thumbTintList = checkedCsl()
+        trackTintList = ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+            intArrayOf(Roost.soft(accent), Roost.withAlpha(Roost.MUTED, 0x55))
+        )
         setPadding(0, dp(8f), 0, dp(8f))
         setOnCheckedChangeListener { _, c -> onChange(c) }
     }
