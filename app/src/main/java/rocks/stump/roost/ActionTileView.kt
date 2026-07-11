@@ -18,9 +18,13 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * The on-tile firing state machine of ADR-0004 — a compound row (rounded pill, fill/border tinted
- * per state) wrapping an animated [ActionDiscView] plus a label, a mono status line, an optional
- * "task" tag, and an error-expand that reveals status/reason + redacted auth + Re-fire / Dismiss.
+ * The on-tile firing state machine of ADR-0004 — an animated [ActionDiscView] plus a label, a mono
+ * status line, an optional "task" tag, and an error-expand that reveals status/reason + redacted auth
+ * + Re-fire / Dismiss.
+ *
+ * Renders in one of three owner-chosen [ActionDensity] layouts (SLIM / REGULAR / RICH) — see
+ * [rebuildViews]. All three share ONE state model + the single pending-ring animation + the 8s
+ * timeout; only the disc size, spacing, and chrome change per density.
  *
  * The whole idle → pending → success/queued → error → timeout story lives on the control — no Toast.
  * Health colors are the fixed semantic ramp (Sage/Amber/Clay), never the accent.
@@ -40,6 +44,8 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
     private var state = State.IDLE
     private var titleText = ""
     private var hostLine = ""
+    private var method = "POST"
+    private var density = ActionDensity.REGULAR
     private var errCode = ""
     private var errMsg = ""
     private var expanded = false
@@ -50,6 +56,8 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
     private val taskTag = TextView(context)
     private val chevron = ImageView(context)
     private val row = LinearLayout(context)
+    private val labels = LinearLayout(context)     // REGULAR/RICH: the label-over-status stack
+    private val divider = View(context)            // SLIM: the bottom hairline that lists the rows
     private val expandBox = LinearLayout(context)
     private val decayHandler = Handler(Looper.getMainLooper())
     private var decay: Runnable? = null
@@ -61,32 +69,18 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
 
     init {
         orientation = VERTICAL
-        applyFill()
 
         row.orientation = HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
-        row.setPadding(dp(13f), dp(11f), dp(13f), dp(11f))
         row.isClickable = true
         row.setOnClickListener { if (state != State.PENDING) onFire?.invoke() }
 
-        disc.layoutParams = LayoutParams(dp(38f), dp(38f))
-        row.addView(disc)
-
-        val labels = LinearLayout(context).apply {
-            orientation = VERTICAL
-            layoutParams = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(13f) }
-        }
+        // View identities are stable across densities (so the disc keeps its animation + the state
+        // model is untouched); only sizes/typefaces/parents are re-applied per density in rebuildViews.
         label.setTextColor(Roost.TEXT)
-        label.textSize = 15f
-        label.typeface = Roost.medium()
         label.maxLines = 1
-        labels.addView(label)
-        status.textSize = 10.5f
         status.typeface = Typeface.MONOSPACE
-        status.setPadding(0, dp(2f), 0, 0)
         status.maxLines = 1
-        labels.addView(status)
-        row.addView(labels)
 
         taskTag.text = "TASK"
         taskTag.textSize = 8.5f
@@ -95,35 +89,143 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         taskTag.setTextColor(0xFF8F8578.toInt())
         taskTag.setPadding(dp(6f), dp(3f), dp(6f), dp(3f))
         taskTag.background = Roost.rounded(Color.TRANSPARENT, dp(6f).toFloat(), Roost.HAIRLINE, dp(1f))
-        taskTag.visibility = GONE
-        row.addView(taskTag, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-            leftMargin = dp(8f)
-        })
 
         chevron.setImageResource(android.R.drawable.arrow_down_float)
-        chevron.visibility = GONE
         chevron.setOnClickListener { toggleExpand() }
-        row.addView(chevron, LayoutParams(dp(18f), dp(18f)).apply { leftMargin = dp(8f) })
 
-        addView(row, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        divider.setBackgroundColor(Roost.HAIRLINE)
 
         expandBox.orientation = VERTICAL
         expandBox.setPadding(dp(13f), 0, dp(13f), dp(13f))
         expandBox.visibility = GONE
-        addView(expandBox, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
 
+        rebuildViews()
         applyState()
     }
 
-    /** One-time bind of the static content (title, idle glyph, task-ness, host). */
-    fun bind(title: String, idleIcon: Drawable?, isTask: Boolean, host: String) {
+    /** One-time bind of the static content (title, idle glyph, task-ness, host, method) + [density]. */
+    fun bind(title: String, idleIcon: Drawable?, isTask: Boolean, host: String, method: String, density: ActionDensity) {
         this.titleText = title
         this.isTask = isTask
         this.hostLine = host
+        this.method = method.ifBlank { "POST" }
+        this.density = density
         label.text = title
         disc.idleIcon = idleIcon
-        taskTag.visibility = if (isTask) VISIBLE else GONE
+        rebuildViews()
         applyState()
+    }
+
+    // --- density layouts ---------------------------------------------------------------------
+    // The three DENSITY layouts (SPEC-0002). One state model + one pending-ring animation drive all
+    // three; only the disc size, spacing, and chrome change. SLIM is a divider-separated one-liner,
+    // REGULAR the default card, RICH a taller card with a TASK chip + a "METHOD · host" hint line.
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "On-tile firing state machine"
+    private fun rebuildViews() {
+        removeAllViews()
+        row.removeAllViews()
+        labels.removeAllViews()
+        when (density) {
+            ActionDensity.SLIM -> buildSlim()
+            ActionDensity.REGULAR -> buildRegular()
+            ActionDensity.RICH -> buildRich()
+        }
+    }
+
+    // SLIM: a dense one-liner — 18dp status dot + inline label; the mono status shows only while the
+    // tile is active. No card; a bottom hairline separates rows into a tight list. The pending ring
+    // scales to the 18dp disc automatically (ActionDiscView draws it relative to its own size).
+    private fun buildSlim() {
+        row.setPadding(dp(4f), dp(9f), dp(4f), dp(9f))
+        disc.layoutParams = LayoutParams(dp(18f), dp(18f))
+        row.addView(disc)
+
+        label.textSize = 13f
+        label.typeface = Typeface.DEFAULT
+        row.addView(label, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(10f) })
+
+        status.textSize = 10f
+        status.setPadding(0, 0, 0, 0)
+        row.addView(status, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+            leftMargin = dp(8f)
+        })
+
+        addView(row, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        addView(divider, LayoutParams(LayoutParams.MATCH_PARENT, dp(1f)))
+    }
+
+    // REGULAR: today's tile — 38dp disc + label-over-status stack inside a per-state tinted card.
+    private fun buildRegular() {
+        row.setPadding(dp(13f), dp(11f), dp(13f), dp(11f))
+        disc.layoutParams = LayoutParams(dp(38f), dp(38f))
+        row.addView(disc)
+
+        labels.orientation = VERTICAL
+        label.textSize = 15f
+        label.typeface = Roost.medium()
+        labels.addView(label)
+        status.textSize = 10.5f
+        status.setPadding(0, dp(2f), 0, 0)
+        labels.addView(status)
+        row.addView(labels, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(13f) })
+
+        row.addView(taskTag, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+            leftMargin = dp(8f)
+        })
+        row.addView(chevron, LayoutParams(dp(18f), dp(18f)).apply { leftMargin = dp(8f) })
+
+        addView(row, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        addView(expandBox, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+    }
+
+    // RICH: the fullest tile — 44dp disc, TASK chip for durable tasks, a stronger per-state card
+    // wash, and (for HTTP actions) a "METHOD · host" hint under a hairline top-border. The error /
+    // timeout expand affordance still applies (expandBox), exactly as in REGULAR.
+    private fun buildRich() {
+        row.setPadding(dp(13f), dp(13f), dp(13f), dp(12f))
+        disc.layoutParams = LayoutParams(dp(44f), dp(44f))
+        row.addView(disc)
+
+        labels.orientation = VERTICAL
+        label.textSize = 14.5f
+        label.typeface = Roost.medium()
+        labels.addView(label)
+        status.textSize = 10.5f
+        status.setPadding(0, dp(3f), 0, 0)
+        labels.addView(status)
+        row.addView(labels, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(14f) })
+
+        row.addView(taskTag, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+            leftMargin = dp(8f)
+        })
+        row.addView(chevron, LayoutParams(dp(18f), dp(18f)).apply { leftMargin = dp(8f) })
+
+        addView(row, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+
+        // "METHOD · host" hint for HTTP actions only — non-HTTP actions (shortcuts) carry no host,
+        // so the line is omitted. Separated from the top row by a hairline top-border.
+        if (hostLine.isNotBlank()) {
+            val hintBox = LinearLayout(context).apply {
+                orientation = VERTICAL
+                setPadding(dp(13f), dp(9f), dp(13f), dp(12f))
+            }
+            hintBox.addView(View(context).apply {
+                setBackgroundColor(Roost.HAIRLINE)
+                layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dp(1f)).apply { bottomMargin = dp(9f) }
+            })
+            hintBox.addView(TextView(context).apply {
+                text = "${method.uppercase()} · $hostLine"
+                setTextColor(0xFF8F8578.toInt())
+                textSize = 9f
+                typeface = Typeface.MONOSPACE
+                letterSpacing = 0.04f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            addView(hintBox, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        }
+
+        addView(expandBox, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
     }
 
     fun isPending() = state == State.PENDING
@@ -203,19 +305,41 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
             State.TIMEOUT -> Roost.AMBER
             else -> accent
         }
-        val (statusText, statusColor) = when (state) {
-            State.IDLE -> (if (isTask) "enqueue a durable task" else "tap to fire") to 0xFF8F8578.toInt()
-            State.PENDING -> "firing…" to accent
-            State.SUCCESS -> (statusOverride ?: "done") to Roost.SAGE
-            State.QUEUED -> (statusOverride ?: "queued · accepted") to Roost.SAGE
-            State.ERROR -> "failed · tap to see why" to Roost.CLAY
-            State.TIMEOUT -> "timed out · 8s" to Roost.AMBER
+
+        if (density == ActionDensity.SLIM) {
+            // SLIM: terse status, hidden at idle; the disc + label carry the state colour (no card tint).
+            val slimText = when (state) {
+                State.IDLE -> ""
+                State.PENDING -> "firing…"
+                State.SUCCESS -> "done"
+                State.QUEUED -> "queued"
+                State.ERROR -> "failed…"
+                State.TIMEOUT -> "timed out"
+            }
+            status.text = slimText
+            status.setTextColor(semantic)
+            status.visibility = if (state == State.IDLE) GONE else VISIBLE
+            label.setTextColor(if (state == State.IDLE) Roost.TEXT else semantic)
+        } else {
+            val (statusText, statusColor) = when (state) {
+                State.IDLE -> (if (isTask) "enqueue a durable task" else "tap to fire") to 0xFF8F8578.toInt()
+                State.PENDING -> "firing…" to accent
+                State.SUCCESS -> (statusOverride ?: "done") to Roost.SAGE
+                State.QUEUED -> (statusOverride ?: "queued · accepted") to Roost.SAGE
+                State.ERROR -> "failed · tap to see why" to Roost.CLAY
+                State.TIMEOUT -> "timed out · 8s" to Roost.AMBER
+            }
+            status.text = statusText
+            status.setTextColor(statusColor)
+            status.visibility = VISIBLE
+            label.setTextColor(Roost.TEXT)
         }
-        status.text = statusText
-        status.setTextColor(statusColor)
+
+        // TASK chip + error-expand chevron belong to the carded densities only; SLIM stays a one-liner.
+        taskTag.visibility = if (isTask && density != ActionDensity.SLIM) VISIBLE else GONE
 
         val sticky = state == State.ERROR || state == State.TIMEOUT
-        chevron.visibility = if (sticky) VISIBLE else GONE
+        chevron.visibility = if (sticky && density != ActionDensity.SLIM) VISIBLE else GONE
         chevron.setColorFilter(semantic)
 
         applyFill()
@@ -223,14 +347,35 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
     }
 
     private fun applyFill() {
-        val (fill, border) = when (state) {
-            State.PENDING -> Roost.soft(accent) to Roost.withAlpha(accent, 0x59)
-            State.SUCCESS, State.QUEUED -> Roost.withAlpha(Roost.SAGE, 0x1A) to Roost.withAlpha(Roost.SAGE, 0x4D)
-            State.ERROR -> Roost.withAlpha(Roost.CLAY, 0x1A) to Roost.withAlpha(Roost.CLAY, 0x52)
-            State.TIMEOUT -> Roost.withAlpha(Roost.AMBER, 0x1A) to Roost.withAlpha(Roost.AMBER, 0x52)
-            else -> 0x0AFFFFFF to Roost.HAIRLINE
+        when (density) {
+            // SLIM has no card — the bottom hairline (added in buildSlim) separates the rows.
+            ActionDensity.SLIM -> background = null
+            ActionDensity.REGULAR -> {
+                val (fill, border) = regularTint()
+                background = Roost.rounded(fill, dp(18f).toFloat(), border, dp(1f))
+            }
+            ActionDensity.RICH -> {
+                val (fill, border) = richTint()
+                background = Roost.rounded(fill, dp(16f).toFloat(), border, dp(1f))
+            }
         }
-        background = Roost.rounded(fill, dp(18f).toFloat(), border, dp(1f))
+    }
+
+    private fun regularTint(): Pair<Int, Int> = when (state) {
+        State.PENDING -> Roost.soft(accent) to Roost.withAlpha(accent, 0x59)
+        State.SUCCESS, State.QUEUED -> Roost.withAlpha(Roost.SAGE, 0x1A) to Roost.withAlpha(Roost.SAGE, 0x4D)
+        State.ERROR -> Roost.withAlpha(Roost.CLAY, 0x1A) to Roost.withAlpha(Roost.CLAY, 0x52)
+        State.TIMEOUT -> Roost.withAlpha(Roost.AMBER, 0x1A) to Roost.withAlpha(Roost.AMBER, 0x52)
+        else -> 0x0AFFFFFF to Roost.HAIRLINE
+    }
+
+    // RICH: a stronger per-state wash than REGULAR so the fuller card reads its state at a glance.
+    private fun richTint(): Pair<Int, Int> = when (state) {
+        State.PENDING -> Roost.withAlpha(accent, 0x3D) to Roost.withAlpha(accent, 0x73)
+        State.SUCCESS, State.QUEUED -> Roost.withAlpha(Roost.SAGE, 0x2E) to Roost.withAlpha(Roost.SAGE, 0x66)
+        State.ERROR -> Roost.withAlpha(Roost.CLAY, 0x2E) to Roost.withAlpha(Roost.CLAY, 0x70)
+        State.TIMEOUT -> Roost.withAlpha(Roost.AMBER, 0x2E) to Roost.withAlpha(Roost.AMBER, 0x70)
+        else -> 0x12FFFFFF to Roost.withAlpha(0xFFFFFFFF.toInt(), 0x1A)
     }
 
     private fun renderExpand(semantic: Int) {
@@ -253,7 +398,7 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         })
         expandBox.addView(TextView(context).apply {
             // The request preview — auth is shown only as a mask (never the secret). SPEC-0002.
-            text = "POST ${hostLine.ifBlank { "endpoint" }} · Authorization: ••••••"
+            text = "${method.uppercase()} ${hostLine.ifBlank { "endpoint" }} · Authorization: ••••••"
             setTextColor(0xFF6E665B.toInt())
             textSize = 11f
             typeface = Typeface.MONOSPACE

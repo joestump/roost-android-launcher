@@ -860,6 +860,9 @@ class MainActivity : Activity() {
         })
         zone.addView(head)
 
+        // One zone-wide density (SPEC-0002). SLIM rows are divider-separated, so they drop the
+        // inter-row gap; REGULAR/RICH cards keep the ~10dp breathing room.
+        val density = Prefs.actionDensity(this)
         buttons.forEach { b ->
             val http = if (b.kind == ActionKind.HTTP) Prefs.httpAction(this, b.a) else null
             val isTask = http != null && HttpActionClient.hostOf(http.url).contains("switchboard")
@@ -869,7 +872,9 @@ class MainActivity : Activity() {
                     title = b.title.substringAfterLast(" · "),
                     idleIcon = overrideIcon(b.key) ?: actionIcon(b),
                     isTask = isTask,
-                    host = host
+                    host = host,
+                    method = http?.method ?: "",
+                    density = density
                 )
                 onFire = { invokeAction(b, this) }
             }
@@ -881,7 +886,7 @@ class MainActivity : Activity() {
             }
             zone.addView(tile, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(10f) })
+            ).apply { topMargin = if (density == ActionDensity.SLIM) 0 else dp(10f) })
         }
         return zone
     }

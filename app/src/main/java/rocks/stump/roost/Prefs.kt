@@ -50,6 +50,7 @@ object Prefs {
     private const val K_ICON_OVERRIDES = "icon_overrides"
     private const val K_HTTP_ACTIONS = "http_actions"
     private const val K_HTTP_SECRETS = "http_secrets"
+    private const val K_ACTION_DENSITY = "action_density"
 
     private fun sp(c: Context): SharedPreferences =
         c.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -232,6 +233,19 @@ object Prefs {
         if (value.isNullOrEmpty()) o.remove(id) else o.put(id, value)
         sp(c).edit().putString(K_HTTP_SECRETS, o.toString()).apply()
     }
+
+    // --- Action-zone tile density (one setting for the whole zone) ---
+    // Stored as the enum name; a bad/absent value falls back to REGULAR (today's look).
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "On-tile firing state machine"
+    fun actionDensity(c: Context): ActionDensity =
+        runCatching {
+            ActionDensity.valueOf(
+                sp(c).getString(K_ACTION_DENSITY, ActionDensity.REGULAR.name) ?: ActionDensity.REGULAR.name
+            )
+        }.getOrDefault(ActionDensity.REGULAR)
+
+    fun setActionDensity(c: Context, d: ActionDensity) =
+        sp(c).edit().putString(K_ACTION_DENSITY, d.name).apply()
 
     // --- Hidden items (long-press → Hide; recoverable) ---
 

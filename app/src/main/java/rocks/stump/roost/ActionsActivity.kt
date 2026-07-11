@@ -33,8 +33,20 @@ class ActionsActivity : SettingsScreen() {
     override fun screenTitle(): String = getString(R.string.actions_title)
 
     override fun buildContent(body: LinearLayout) {
+        // --- 0. Display density (whole-zone tile density — SPEC-0002) ------------------------
+        // One setting drives every action tile's look on the home screen. Rebuild on change so the
+        // segmented control reflects the committed value immediately.
+        body.addView(sectionHeader("Display density", firstOnScreen = true))
+        val densities = listOf(ActionDensity.SLIM, ActionDensity.REGULAR, ActionDensity.RICH)
+        val selected = densities.indexOf(Prefs.actionDensity(this)).coerceAtLeast(0)
+        body.addView(segmented(listOf("Slim", "Regular", "Rich"), selected) { i ->
+            Prefs.setActionDensity(this, densities[i])
+            rebuild()
+        })
+        body.addView(hint("How action tiles look on the home screen."))
+
         // --- 1. HTTP actions (primary) -------------------------------------------------------
-        body.addView(sectionHeader("HTTP actions", firstOnScreen = true))
+        body.addView(sectionHeader("HTTP actions"))
         val httpButtons = Prefs.actionButtons(this).filter { it.kind == ActionKind.HTTP }
         val httpRows = mutableListOf<View>()
         for (b in httpButtons) {

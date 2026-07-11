@@ -24,6 +24,18 @@ data class ActionButton(
     val b: String
 )
 
+/**
+ * How the home "Actions" zone renders its action tiles — one setting for the whole zone. All three
+ * densities share the same on-tile firing state machine (idle → pending → success/queued → error →
+ * timeout) and the fixed Sage/Amber/Clay ramp; only the disc size, spacing, and chrome change.
+ *  - SLIM    : a divider-separated one-liner (18dp dot + label, status only while active)
+ *  - REGULAR : today's default card (38dp disc + label + status, per-state tint)
+ *  - RICH    : a taller card (44dp disc + TASK chip + a "METHOD · host" hint line)
+ *
+ * Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "On-tile firing state machine"
+ */
+enum class ActionDensity { SLIM, REGULAR, RICH }
+
 /** A Home Assistant instance the user has connected. [token] is a long-lived access token. */
 data class HassAccount(
     val id: String,
