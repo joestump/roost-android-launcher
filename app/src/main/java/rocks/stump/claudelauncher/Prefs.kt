@@ -29,6 +29,7 @@ object Prefs {
     private const val K_CLAUDE_PKG = "claude_pkg"
     private const val K_FAVORITES = "favorites"
     private const val K_PENDING_BOOT = "pending_boot_launch"
+    private const val K_ACCENT = "accent"
 
     private fun sp(c: Context): SharedPreferences =
         c.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -54,4 +55,8 @@ object Prefs {
     /** One-shot flag set by BootReceiver, consumed on the first HOME onResume after boot. */
     fun pendingBootLaunch(c: Context): Boolean = sp(c).getBoolean(K_PENDING_BOOT, false)
     fun setPendingBootLaunch(c: Context, v: Boolean) = sp(c).edit().putBoolean(K_PENDING_BOOT, v).apply()
+
+    /** Themeable accent color (ARGB int). Defaults to Honey. */
+    fun accent(c: Context): Int = sp(c).getInt(K_ACCENT, Roost.DEFAULT_ACCENT)
+    fun setAccent(c: Context, v: Int) = sp(c).edit().putInt(K_ACCENT, v).apply()
 }

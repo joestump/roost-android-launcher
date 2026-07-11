@@ -3,17 +3,16 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 8-spoke spark in Claude orange, four rotated bars pivoting on center. -->
-    <group android:pivotX="54" android:pivotY="54" android:rotation="0">
-        <path android:fillColor="#D97757" android:pathData="M50,30 h8 v48 h-8 z" />
-    </group>
-    <group android:pivotX="54" android:pivotY="54" android:rotation="45">
-        <path android:fillColor="#D97757" android:pathData="M50,30 h8 v48 h-8 z" />
-    </group>
-    <group android:pivotX="54" android:pivotY="54" android:rotation="90">
-        <path android:fillColor="#D97757" android:pathData="M50,30 h8 v48 h-8 z" />
-    </group>
-    <group android:pivotX="54" android:pivotY="54" android:rotation="135">
-        <path android:fillColor="#D97757" android:pathData="M50,30 h8 v48 h-8 z" />
-    </group>
+    <!-- A little house — home. Outlined in warm cream. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#E8E1D5"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M54,34 L74,52 L74,76 L34,76 L34,52 Z" />
+    <!-- The glowing "resident" dot — presence. -->
+    <path
+        android:fillColor="#E7A44E"
+        android:pathData="M54,62 m-6.5,0 a6.5,6.5 0 1,0 13,0 a6.5,6.5 0 1,0 -13,0" />
 </vector>

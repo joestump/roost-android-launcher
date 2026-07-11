@@ -2,14 +2,17 @@ package rocks.stump.claudelauncher
 
 import android.app.Activity
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Typeface
 import android.graphics.drawable.Drawable
+import android.os.BatteryManager
 import android.os.Bundle
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -18,19 +21,20 @@ import android.widget.TextView
 import android.widget.Toast
 
 /**
- * The HOME surface. Two behaviors, switchable in Settings:
+ * The HOME surface, styled per the "Roost" design.
  *
- *  - Curated  : Home shows the favorites grid. On boot, Claude is foregrounded once.
- *  - Appliance: Home shows a minimal Claude "lock" screen; a long-press reveals the grid
- *               for the current visit only (re-locks when you leave).
+ *  - Curated  : the robot mascot + greeting + featured agent card + utility grid.
+ *  - Appliance: an ambient "at rest" face (mascot + greeting); long-press reveals the grid.
  *
- * Boot auto-launch (both modes) is driven by a one-shot flag armed in BootReceiver and
- * consumed here — this keeps the actual startActivity() in the foreground, which is allowed.
+ * Boot auto-launch (both modes) is driven by a one-shot flag armed in BootReceiver and consumed
+ * here, so the actual startActivity() runs from the foreground HOME activity (allowed).
  */
 class MainActivity : Activity() {
 
-    /** Appliance-mode: true only while the user has long-pressed to reveal the grid this visit. */
     private var applianceRevealed = false
+
+    private val accent: Int get() = Prefs.accent(this)
+    private fun dp(v: Float): Int = Roost.dp(this, v)
 
     override fun onResume() {
         super.onResume()
@@ -38,19 +42,17 @@ class MainActivity : Activity() {
 
         if (Prefs.pendingBootLaunch(this)) {
             Prefs.setPendingBootLaunch(this, false)
-            if (launchClaude()) return   // Claude is now foreground; nothing to draw.
+            if (launchAgent()) return
         }
-
         render()
     }
 
     override fun onStop() {
         super.onStop()
-        applianceRevealed = false        // re-lock appliance mode on the next visit
+        applianceRevealed = false
     }
 
-    /** Home is a dead end — never let Back drop the user to a blank task. */
-    override fun onBackPressed() { /* no-op */ }
+    override fun onBackPressed() { /* home is a dead end */ }
 
     private fun applyScreenOn() {
         if (Prefs.keepScreenOn(this)) {
@@ -62,138 +64,275 @@ class MainActivity : Activity() {
 
     private fun render() {
         val appliance = Prefs.mode(this) == Prefs.MODE_APPLIANCE
-        if (appliance && !applianceRevealed) renderLock() else renderGrid()
+        if (appliance && !applianceRevealed) renderAmbient() else renderHome()
     }
 
-    // --- Appliance lock screen -------------------------------------------------------------
+    // --- Curated home -----------------------------------------------------------------------
 
-    private fun renderLock() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setBackgroundColor(BG)
-            setPadding(dp(32), dp(32), dp(32), dp(32))
-            setOnLongClickListener {
-                applianceRevealed = true
-                renderGrid()
-                true
-            }
-        }
-        buildTile(Prefs.claudePkg(this), big = true) { launchClaude() }?.let { root.addView(it) }
-        root.addView(TextView(this).apply {
-            text = getString(R.string.appliance_hint)
-            setTextColor(HINT)
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setPadding(0, dp(24), 0, 0)
-        })
-        setContentView(root)
-    }
-
-    // --- Curated / revealed grid -----------------------------------------------------------
-
-    private fun renderGrid() {
+    private fun renderHome() {
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(40), dp(20), dp(24))
-        }
-
-        // Featured Claude tile.
-        buildTile(Prefs.claudePkg(this), big = true) { launchClaude() }?.let { col.addView(it) }
-
-        // Grid of the other favorites that are actually installed. GridLayout weight-based
-        // sizing collapses children to zero width here, so we compute a fixed cell width from
-        // the display width and lay the tiles out in fixed thirds.
-        val columns = 3
-        val grid = GridLayout(this).apply {
-            columnCount = columns
-            setPadding(0, dp(24), 0, 0)
-        }
-        val cellWidth = (resources.displayMetrics.widthPixels - dp(40)) / columns
-        val claudePkg = Prefs.claudePkg(this)
-        Prefs.favorites(this)
-            .filter { it != claudePkg }
-            .mapNotNull { pkg -> appLabel(pkg)?.let { pkg to it } }
-            .sortedBy { it.second.lowercase() }
-            .forEach { (pkg, _) ->
-                buildTile(pkg, big = false, cellWidthPx = cellWidth) { launchPackage(pkg) }
-                    ?.let { grid.addView(it) }
-            }
-        col.addView(
-            grid,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(22f), dp(46f), dp(22f), dp(28f))
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
-        )
-
-        // Escape hatch to the app picker / settings.
-        col.addView(TextView(this).apply {
-            text = getString(R.string.apps_and_settings)
-            setTextColor(HINT)
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setPadding(0, dp(28), 0, 0)
-            setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
-        })
+        }
+        col.addView(mascot(dp(128f)))
+        col.addView(greetingView())
+        col.addView(statusView())
+        col.addView(spacer(dp(22f)))
+        col.addView(featuredCard())
+        col.addView(spacer(dp(22f)))
+        col.addView(utilityGrid())
+        col.addView(appsSettingsLink(dp(26f)))
 
         setContentView(ScrollView(this).apply {
-            setBackgroundColor(BG)
+            background = Roost.dockBackground(this@MainActivity)
+            isFillViewport = true
             addView(col)
         })
     }
 
-    // --- Tile construction -----------------------------------------------------------------
+    // --- Appliance "at rest" face -----------------------------------------------------------
 
-    private fun buildTile(pkg: String, big: Boolean, cellWidthPx: Int = 0, onClick: () -> Unit): View? {
-        // For the Claude package we always show a tile (even pre-install) so the device is usable
-        // the moment Claude finishes installing; other packages only render once installed.
-        val label = appLabel(pkg) ?: if (pkg == Prefs.claudePkg(this)) "Claude" else return null
-        val icon: Drawable? = try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null }
+    private fun renderAmbient() {
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(32f), dp(32f), dp(32f), dp(32f))
+        }
+        col.addView(mascot(dp(150f)))
+        col.addView(greetingView())
+        col.addView(statusView())
+        col.addView(TextView(this).apply {
+            text = getString(R.string.appliance_hint)
+            setTextColor(Roost.MUTED)
+            textSize = 12.5f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(28f), 0, 0)
+        })
 
+        val root = FrameLayout(this).apply {
+            background = Roost.dockBackground(this@MainActivity)
+            isLongClickable = true
+            setOnLongClickListener {
+                applianceRevealed = true
+                renderHome()
+                true
+            }
+            addView(
+                col,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                ).apply { gravity = Gravity.CENTER }
+            )
+        }
+        setContentView(root)
+    }
+
+    // --- Pieces -----------------------------------------------------------------------------
+
+    private fun mascot(sizePx: Int): MascotView = MascotView(this).apply {
+        accent = this@MainActivity.accent
+        layoutParams = LinearLayout.LayoutParams(sizePx, sizePx).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+    }
+
+    private fun greetingView(): TextView = TextView(this).apply {
+        text = getString(R.string.greeting_home)
+        setTextColor(Roost.TEXT)
+        textSize = 21f
+        gravity = Gravity.CENTER
+        setPadding(0, dp(10f), 0, 0)
+    }
+
+    private fun statusView(): TextView = TextView(this).apply {
+        text = statusLine()
+        setTextColor(Roost.MUTED)
+        textSize = 12f
+        typeface = Typeface.MONOSPACE
+        gravity = Gravity.CENTER
+        setPadding(0, dp(6f), 0, 0)
+    }
+
+    private fun statusLine(): String {
+        val (pct, charging) = battery()
+        val word = if (charging) "docked & charging" else "on battery"
+        return if (pct >= 0) "roost · $word · $pct%" else "roost · $word"
+    }
+
+    private fun battery(): Pair<Int, Boolean> {
+        val i = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = i?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val plugged = i?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val pct = if (level >= 0 && scale > 0) level * 100 / scale else -1
+        return pct to (plugged != 0)
+    }
+
+    private fun featuredCard(): View {
+        val pkg = Prefs.claudePkg(this)
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Roost.rounded(Roost.PANEL, dp(18f).toFloat(), Roost.HAIRLINE, dp(1f))
+            setPadding(dp(15f), dp(15f), dp(15f), dp(15f))
+            elevation = dp(2f).toFloat()
+            isClickable = true
+            setOnClickListener { launchAgent() }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        val iconTile = FrameLayout(this).apply {
+            background = Roost.rounded(Roost.TILE, dp(14f).toFloat())
+            val s = dp(64f)
+            layoutParams = LinearLayout.LayoutParams(s, s)
+        }
+        iconTile.addView(ImageView(this).apply {
+            setImageDrawable(appIcon(pkg))
+            val p = dp(12f)
+            setPadding(p, p, p, p)
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        })
+        card.addView(iconTile)
+
+        val texts = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14f), 0, dp(10f), 0)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        texts.addView(TextView(this).apply {
+            text = appLabel(pkg) ?: "Agent"
+            setTextColor(Roost.TEXT)
+            textSize = 18f
+            typeface = Roost.medium()
+        })
+        texts.addView(TextView(this).apply {
+            text = getString(R.string.featured_subtitle)
+            setTextColor(Roost.MUTED)
+            textSize = 12.5f
+            setPadding(0, dp(2f), 0, 0)
+        })
+        card.addView(texts)
+
+        card.addView(chip(getString(R.string.featured)))
+        return card
+    }
+
+    private fun chip(label: String): TextView = TextView(this).apply {
+        text = label.uppercase()
+        setTextColor(accent)
+        textSize = 10f
+        letterSpacing = 0.08f
+        typeface = Roost.medium()
+        background = Roost.rounded(Roost.soft(accent), dp(20f).toFloat())
+        setPadding(dp(10f), dp(5f), dp(10f), dp(5f))
+    }
+
+    private fun utilityGrid(): View {
+        val columns = 3
+        val grid = GridLayout(this).apply { columnCount = columns }
+        val cell = (resources.displayMetrics.widthPixels - dp(44f)) / columns
+        val agentPkg = Prefs.claudePkg(this)
+
+        Prefs.favorites(this)
+            .filter { it != agentPkg }
+            .mapNotNull { pkg -> appLabel(pkg)?.let { pkg to it } }
+            .sortedBy { it.second.lowercase() }
+            .forEach { (pkg, label) ->
+                grid.addView(tile(label, appIcon(pkg), cell, isAdd = false) { launchPackage(pkg) })
+            }
+        grid.addView(tile(getString(R.string.add), null, cell, isAdd = true) {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        })
+
+        grid.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        return grid
+    }
+
+    private fun tile(label: String, icon: Drawable?, cellPx: Int, isAdd: Boolean, onClick: () -> Unit): View {
         val cell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            val pad = if (big) dp(16) else dp(12)
-            setPadding(pad, pad, pad, pad)
+            setPadding(0, dp(6f), 0, dp(6f))
             isClickable = true
             setOnClickListener { onClick() }
         }
-        cell.addView(ImageView(this).apply {
-            icon?.let { setImageDrawable(it) }
-            val s = if (big) dp(96) else dp(56)
+
+        val surface = FrameLayout(this).apply {
+            background = Roost.rounded(
+                Roost.TILE, dp(16f).toFloat(),
+                if (isAdd) Roost.soft(accent) else Roost.HAIRLINE, dp(1f)
+            )
+            val s = dp(58f)
             layoutParams = LinearLayout.LayoutParams(s, s)
+        }
+        surface.addView(ImageView(this).apply {
+            if (isAdd) {
+                setImageResource(R.drawable.ic_plus)
+                setColorFilter(accent)
+                val p = dp(16f); setPadding(p, p, p, p)
+            } else {
+                setImageDrawable(icon)
+                val p = dp(13f); setPadding(p, p, p, p)
+            }
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            )
         })
+        cell.addView(surface)
+
         cell.addView(TextView(this).apply {
             text = label
-            setTextColor(FG)
-            textSize = if (big) 20f else 13f
+            setTextColor(Roost.MUTED)
+            textSize = 12.5f
             gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, 0)
+            maxLines = 1
+            setPadding(0, dp(7f), 0, 0)
         })
 
-        cell.layoutParams = if (big) {
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        } else {
-            GridLayout.LayoutParams().apply {
-                width = cellWidthPx
-                height = GridLayout.LayoutParams.WRAP_CONTENT
-                setGravity(Gravity.CENTER)
-            }
+        cell.layoutParams = GridLayout.LayoutParams().apply {
+            width = cellPx
+            height = GridLayout.LayoutParams.WRAP_CONTENT
+            setGravity(Gravity.CENTER)
         }
         return cell
     }
 
-    // --- Helpers ---------------------------------------------------------------------------
+    private fun appsSettingsLink(topPx: Int): TextView = TextView(this).apply {
+        text = getString(R.string.apps_and_settings)
+        setTextColor(Roost.MUTED)
+        textSize = 14f
+        gravity = Gravity.CENTER
+        setPadding(0, topPx, 0, 0)
+        setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
+    }
+
+    private fun spacer(heightPx: Int): View = View(this).apply {
+        layoutParams = LinearLayout.LayoutParams(1, heightPx)
+    }
+
+    // --- App resolution ---------------------------------------------------------------------
+
+    private fun appIcon(pkg: String): Drawable? =
+        try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null }
 
     private fun appLabel(pkg: String): String? = try {
-        val ai = packageManager.getApplicationInfo(pkg, 0)
-        packageManager.getApplicationLabel(ai).toString()
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
     } catch (e: PackageManager.NameNotFoundException) {
         null
     }
 
-    private fun launchClaude(): Boolean = launchPackage(Prefs.claudePkg(this))
+    private fun launchAgent(): Boolean = launchPackage(Prefs.claudePkg(this))
 
     private fun launchPackage(pkg: String): Boolean {
         val intent = packageManager.getLaunchIntentForPackage(pkg)
@@ -205,14 +344,5 @@ class MainActivity : Activity() {
             Toast.makeText(this, getString(R.string.not_installed, pkg), Toast.LENGTH_SHORT).show()
             false
         }
-    }
-
-    private fun dp(v: Int): Int =
-        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).toInt()
-
-    companion object {
-        private const val BG = 0xFF141414.toInt()
-        private const val FG = 0xFFF2F2F2.toInt()
-        private const val HINT = 0xFF9A9A9A.toInt()
     }
 }

@@ -6,9 +6,9 @@ import android.graphics.Typeface
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -20,21 +20,23 @@ import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 
-/**
- * Fully programmatic settings + favorites picker. Changes apply immediately (no save button
- * except for the Claude package override, which is free text).
- */
+/** Settings + favorites picker + accent-tint chooser, styled per the "Roost" palette. */
 class SettingsActivity : Activity() {
+
+    private val accent: Int get() = Prefs.accent(this)
+    private fun dp(v: Float): Int = Roost.dp(this, v)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(28), dp(20), dp(40))
+            setPadding(dp(22f), dp(30f), dp(22f), dp(44f))
         }
 
-        // --- Launcher mode ---
+        col.addView(title(getString(R.string.settings_title)))
+
+        // --- Home mode ---
         col.addView(header(getString(R.string.settings_mode)))
         val modeGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
         val curated = radio(getString(R.string.mode_curated))
@@ -56,13 +58,17 @@ class SettingsActivity : Activity() {
             Prefs.setKeepScreenOn(this, it)
         })
 
-        // --- Claude package override ---
+        // --- Accent tint ---
+        col.addView(header(getString(R.string.settings_accent)))
+        col.addView(accentSwatches())
+
+        // --- Featured agent app ---
         col.addView(header(getString(R.string.settings_pkg)))
         val pkgEdit = EditText(this).apply {
             setText(Prefs.claudePkg(this@SettingsActivity))
             inputType = InputType.TYPE_CLASS_TEXT
-            setTextColor(FG)
-            setHintTextColor(0xFF888888.toInt())
+            setTextColor(Roost.TEXT)
+            setHintTextColor(Roost.MUTED)
         }
         col.addView(pkgEdit)
         col.addView(Button(this).apply {
@@ -76,14 +82,14 @@ class SettingsActivity : Activity() {
             }
         })
 
-        // --- Favorites picker ---
+        // --- Favorites ---
         col.addView(header(getString(R.string.settings_favorites)))
         val favs = Prefs.favorites(this)
         for ((pkg, label) in installedLaunchable()) {
             col.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(6), 0, dp(6))
+                setPadding(0, dp(6f), 0, dp(6f))
                 addView(CheckBox(this@SettingsActivity).apply {
                     isChecked = favs.contains(pkg)
                     setOnCheckedChangeListener { _, checked ->
@@ -94,28 +100,55 @@ class SettingsActivity : Activity() {
                 })
                 addView(TextView(this@SettingsActivity).apply {
                     text = "$label\n$pkg"
-                    setTextColor(0xFFDDDDDD.toInt())
+                    setTextColor(Roost.MUTED)
                     textSize = 14f
                 })
             })
         }
 
-        // --- Android settings escape hatch ---
         col.addView(TextView(this).apply {
             text = getString(R.string.open_android_settings)
-            setTextColor(0xFF8AB4F8.toInt())
+            setTextColor(accent)
             textSize = 15f
-            setPadding(0, dp(28), 0, 0)
+            setPadding(0, dp(28f), 0, 0)
             setOnClickListener { startActivity(Intent(Settings.ACTION_SETTINGS)) }
         })
 
         setContentView(ScrollView(this).apply {
-            setBackgroundColor(BG)
+            background = Roost.dockBackground(this@SettingsActivity)
             addView(col)
         })
     }
 
-    /** All launchable apps except ourselves, de-duplicated by package and sorted by label. */
+    private fun accentSwatches(): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(4f), 0, dp(4f))
+        }
+        for ((name, color) in Roost.ACCENTS) {
+            val selected = color == accent
+            val swatch = TextView(this).apply {
+                text = name
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setTextColor(if (selected) Roost.DOCK else Roost.TEXT)
+                background = Roost.rounded(
+                    if (selected) color else Roost.TILE, dp(20f).toFloat(),
+                    if (selected) color else Roost.HAIRLINE, dp(if (selected) 2f else 1f)
+                )
+                setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
+                setOnClickListener {
+                    Prefs.setAccent(this@SettingsActivity, color)
+                    recreate()
+                }
+            }
+            row.addView(swatch, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { rightMargin = dp(8f) })
+        }
+        return row
+    }
+
     private fun installedLaunchable(): List<Pair<String, String>> {
         val pm = packageManager
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -128,33 +161,34 @@ class SettingsActivity : Activity() {
             .sortedBy { it.second.lowercase() }
     }
 
-    private fun header(t: String) = TextView(this).apply {
+    private fun title(t: String) = TextView(this).apply {
         text = t
-        setTextColor(FG)
-        textSize = 16f
-        setPadding(0, dp(22), 0, dp(8))
-        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(Roost.TEXT)
+        textSize = 22f
+        typeface = Roost.medium()
+        setPadding(0, 0, 0, dp(6f))
+    }
+
+    private fun header(t: String) = TextView(this).apply {
+        text = t.uppercase()
+        setTextColor(accent)
+        textSize = 12f
+        letterSpacing = 0.08f
+        typeface = Roost.medium()
+        setPadding(0, dp(24f), 0, dp(8f))
     }
 
     private fun radio(t: String) = RadioButton(this).apply {
         text = t
-        setTextColor(0xFFDDDDDD.toInt())
+        setTextColor(Roost.TEXT)
         id = View.generateViewId()
     }
 
     private fun switchRow(t: String, initial: Boolean, onChange: (Boolean) -> Unit) = Switch(this).apply {
         text = t
         isChecked = initial
-        setTextColor(0xFFDDDDDD.toInt())
-        setPadding(0, dp(8), 0, dp(8))
+        setTextColor(Roost.TEXT)
+        setPadding(0, dp(8f), 0, dp(8f))
         setOnCheckedChangeListener { _, c -> onChange(c) }
-    }
-
-    private fun dp(v: Int): Int =
-        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).toInt()
-
-    companion object {
-        private const val BG = 0xFF141414.toInt()
-        private const val FG = 0xFFF2F2F2.toInt()
     }
 }
