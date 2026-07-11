@@ -53,6 +53,9 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
     private val expandBox = LinearLayout(context)
     private val decayHandler = Handler(Looper.getMainLooper())
     private var decay: Runnable? = null
+    // An independent ceiling on the pending state: the client's per-phase socket timeouts can stack
+    // (connect + read) and DNS is unbounded, so "firing…" could otherwise persist ~16s+ or forever.
+    private var pendingTimeout: Runnable? = null
 
     private fun dp(v: Float) = Roost.dp(context, v)
 
@@ -127,7 +130,15 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
 
     // --- state transitions -------------------------------------------------------------------
 
-    fun showPending() { cancelDecay(); setStateInternal(State.PENDING) }
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "8s → timeout"
+    fun showPending() {
+        cancelDecay()
+        setStateInternal(State.PENDING)
+        // Arm an 8s ceiling: if no result lands (DNS blackhole, stacked socket timeouts) the tile falls
+        // to TIMEOUT on its own. Any real result cancels this via setStateInternal leaving PENDING.
+        pendingTimeout = Runnable { if (state == State.PENDING) showTimeout() }
+        decayHandler.postDelayed(pendingTimeout!!, PENDING_TIMEOUT_MS)
+    }
 
     fun showSuccess(code: Int) {
         cancelDecay()
@@ -159,6 +170,7 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
     fun flashSuccess() { cancelDecay(); setStateInternal(State.SUCCESS, statusOverride = "opened"); scheduleDecay(1200L) }
 
     private fun setStateInternal(s: State, statusOverride: String? = null) {
+        if (s != State.PENDING) cancelPendingTimeout()   // any transition out of pending disarms the ceiling
         state = s
         if (s != State.ERROR && s != State.TIMEOUT) expanded = false
         disc.setState(s)
@@ -171,6 +183,10 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
     }
 
     private fun cancelDecay() { decay?.let { decayHandler.removeCallbacks(it) }; decay = null }
+
+    private fun cancelPendingTimeout() {
+        pendingTimeout?.let { decayHandler.removeCallbacks(it) }; pendingTimeout = null
+    }
 
     private fun toggleExpand() {
         if (state != State.ERROR && state != State.TIMEOUT) return
@@ -278,6 +294,12 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         cancelDecay()
+        cancelPendingTimeout()
+    }
+
+    companion object {
+        /** Independent on-tile ceiling for the pending state — realizes SPEC-0002 "8s → timeout". */
+        private const val PENDING_TIMEOUT_MS = 8000L
     }
 }
 

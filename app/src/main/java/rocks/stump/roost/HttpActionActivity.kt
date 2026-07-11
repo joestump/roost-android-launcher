@@ -39,6 +39,10 @@ class HttpActionActivity : Activity() {
     private var method = "POST"
     private var auth = HttpAuth.NONE
     private var secretReplacing = false
+    // The auth scheme the currently-stored secret was saved under (null when no secret is stored). A
+    // stored secret is only valid — shown masked, reused on save — while auth == secretScheme; switching
+    // schemes invalidates it so a Bearer token can never be reused as an HMAC shared secret. (Fix 7.)
+    private var secretScheme: HttpAuth? = null
 
     private lateinit var titleEdit: EditText
     private lateinit var urlEdit: EditText
@@ -62,7 +66,9 @@ class HttpActionActivity : Activity() {
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).toInt()
 
     private val methods = listOf("GET", "POST", "PUT", "DELETE", "PATCH")
-    private val varChips = listOf("battery", "timestamp", "agent", "device", "prompt")
+    // No {{prompt}} chip: no fire path (MainActivity.invokeAction / testFire) ever supplies a "prompt"
+    // var, so it would always resolve to empty — don't advertise a no-op token.
+    private val varChips = listOf("battery", "timestamp", "agent", "device")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,7 +78,10 @@ class HttpActionActivity : Activity() {
         method = intent.getStringExtra(EXTRA_METHOD) ?: existing?.method ?: "POST"
         auth = runCatching { HttpAuth.valueOf(intent.getStringExtra(EXTRA_AUTH) ?: existing?.auth?.name ?: "NONE") }
             .getOrDefault(HttpAuth.NONE)
-        secretReplacing = Prefs.httpSecret(this, id).isEmpty()
+        val hasStoredSecret = Prefs.httpSecret(this, id).isNotEmpty()
+        // The stored secret (if any) belongs to the scheme the action was last saved with.
+        secretScheme = if (hasStoredSecret) existing?.auth else null
+        secretReplacing = !hasStoredSecret
 
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -132,7 +141,7 @@ class HttpActionActivity : Activity() {
         col.addView(sectionLabel("Auth"))
         authRow = segmentedRow()
         listOf(HttpAuth.NONE to "None", HttpAuth.BEARER to "Bearer", HttpAuth.HMAC to "HMAC").forEach { (a, lbl) ->
-            val pill = pill(lbl) { auth = a; styleAuthPills(); renderSecret() }
+            val pill = pill(lbl) { onAuthSelected(a) }
             pill.tag = a
             authPills.add(pill); authRow.addView(pill)
         }
@@ -265,6 +274,17 @@ class HttpActionActivity : Activity() {
         p.background = Roost.rounded(if (selected) Roost.soft(accent) else 0, dp(9f).toFloat())
     }
 
+    // Security: changing the auth scheme must never silently carry a secret across schemes. Drop any
+    // in-memory draft; renderSecret() then requires fresh entry whenever auth != the stored scheme.
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Secret handling"
+    private fun onAuthSelected(a: HttpAuth) {
+        if (a != auth) {
+            auth = a
+            newSecret = ""
+        }
+        styleAuthPills(); renderSecret()
+    }
+
     // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Secret handling"
     private fun renderSecret() {
         authHint.text = when (auth) {
@@ -277,7 +297,10 @@ class HttpActionActivity : Activity() {
         secretBox.visibility = View.VISIBLE
 
         val saved = Prefs.httpSecret(this, id)
-        if (saved.isNotEmpty() && !secretReplacing) {
+        // Only reuse/show the stored secret while the auth scheme still matches the one it was saved
+        // under — otherwise force fresh entry so a token isn't reused as a different kind of credential.
+        val savedUsable = saved.isNotEmpty() && secretScheme == auth
+        if (savedUsable && !secretReplacing) {
             // Show only an obscured summary + Replace — never re-display the value.
             val rowV = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -411,13 +434,27 @@ class HttpActionActivity : Activity() {
 
     // --- save --------------------------------------------------------------------------------
 
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Secret handling"
     private fun save() {
         val title = titleEdit.text.toString().trim().ifBlank { HttpActionClient.hostOf(urlEdit.text.toString()) }
         val action = currentAction().copy()
         if (action.url.isBlank()) { toast("A URL is required"); return }
+
+        // Security: if the auth scheme was changed and no fresh secret was entered, a secret stored
+        // under the OLD scheme is still on disk — never reuse it under the new scheme. Require re-entry.
+        if (auth != HttpAuth.NONE && newSecret.isBlank() && secretScheme != null && secretScheme != auth) {
+            val kind = if (auth == HttpAuth.HMAC) "shared secret" else "token"
+            toast("Enter the $kind for this auth")
+            secretReplacing = true; renderSecret()
+            return
+        }
+
         Prefs.setHttpAction(this, action)
-        if (auth != HttpAuth.NONE && newSecret.isNotBlank()) Prefs.setHttpSecret(this, id, newSecret)
-        if (auth == HttpAuth.NONE) Prefs.setHttpSecret(this, id, null)
+        when {
+            auth == HttpAuth.NONE -> Prefs.setHttpSecret(this, id, null)
+            newSecret.isNotBlank() -> Prefs.setHttpSecret(this, id, newSecret)
+            // else: same scheme, nothing re-entered → keep the stored secret untouched.
+        }
         // Enable an ActionButton(HTTP) referencing the definition by id (ADR-0002/ADR-0004).
         val button = ActionButton(ActionKind.HTTP, buttonKey(), title, id, "")
         Prefs.setActionEnabled(this, button, true)
@@ -436,8 +473,13 @@ class HttpActionActivity : Activity() {
         )
     }
 
-    private fun effectiveSecret(): String =
-        if (newSecret.isNotBlank()) newSecret else Prefs.httpSecret(this, id)
+    // A freshly-typed secret wins; otherwise only fall back to the stored secret while its scheme still
+    // matches the selected auth — never reuse a stored credential under a different scheme (Fix 7).
+    private fun effectiveSecret(): String = when {
+        newSecret.isNotBlank() -> newSecret
+        secretScheme == auth -> Prefs.httpSecret(this, id)
+        else -> ""
+    }
 
     private fun buttonKey() = "http:$id"
 
@@ -454,12 +496,17 @@ class HttpActionActivity : Activity() {
 
     // --- helpers -----------------------------------------------------------------------------
 
+    // Validate exactly what would be SENT: substitute vars with the same defaults fire uses
+    // (HttpActionClient.substitute + defaultVars), not a placeholder "0". Otherwise a body like
+    // {"pct": {{battery}}} reads "valid JSON" but fires malformed {"pct": } when the var resolves empty.
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Action builder"
     private fun isValidJson(body: String): Boolean {
         val b = body.trim()
         if (b.isEmpty()) return true
-        val stripped = Regex("\\{\\{[^}]+\\}\\}").replace(b, "0").trim()
+        val resolved = HttpActionClient.substitute(b, HttpActionClient.defaultVars(this)).trim()
+        if (resolved.isEmpty()) return true
         return try {
-            if (stripped.startsWith("[")) JSONArray(stripped) else JSONObject(stripped)
+            if (resolved.startsWith("[")) JSONArray(resolved) else JSONObject(resolved)
             true
         } catch (e: Exception) { false }
     }

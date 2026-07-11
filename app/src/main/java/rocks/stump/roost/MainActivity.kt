@@ -58,6 +58,10 @@ class MainActivity : Activity() {
     private var awake = false
     private var lastActiveAt = 0L
 
+    // Debounce for tap-to-launch SHORTCUT actions — they fire synchronously (never PENDING), so the
+    // isPending() guard can't stop a fast double-tap from launching the target twice. (Fix 9.)
+    private var lastShortcutFireAt = 0L
+
     // Independent 1s traffic-rate poll so the VPN chip always shows live up/down speeds,
     // regardless of whether the "Bandwidth heartbeat" graph is enabled.
     private val rateHandler = Handler(Looper.getMainLooper())
@@ -105,7 +109,9 @@ class MainActivity : Activity() {
             if (Prefs.bootIntro(this) && Prefs.mode(this) == Prefs.MODE_CURATED) {
                 registerBattery()
                 startRatePoll()
-                renderWaking()
+                // This intro stands in for the auto-launch-on-boot; hand off to the agent when it
+                // finishes instead of stranding on home (enabling the intro must not defeat auto-launch).
+                renderWaking(launchAgentWhenDone = true)
                 return
             }
             if (launchAgent()) return
@@ -615,7 +621,7 @@ class MainActivity : Activity() {
     // line, then "good morning.", then it reveals the curated home. Driven entirely by Handler-delayed
     // reveals + ViewPropertyAnimator fades (no animation library). Reaching home on its own means this
     // can never strand the launcher on the intro screen.
-    private fun renderWaking() {
+    private fun renderWaking(launchAgentWhenDone: Boolean = false) {
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -658,8 +664,12 @@ class MainActivity : Activity() {
         bootHandler.postDelayed({ reveal(l2) }, 550)
         bootHandler.postDelayed({ reveal(l3) }, 950)
         bootHandler.postDelayed({ reveal(l4) }, 1450)
-        // Finally, hand off to the real curated home.
-        bootHandler.postDelayed({ renderHome() }, 2900)
+        // Finally, hand off: for a boot launch, actually launch the agent (consuming the pending flag
+        // was already done in onResume) so the intro doesn't silently defeat auto-launch-on-boot; if the
+        // agent can't launch, fall back to the curated home. For a manual/preview intro, end on home.
+        bootHandler.postDelayed({
+            if (launchAgentWhenDone) { if (!launchAgent()) renderHome() } else renderHome()
+        }, 2900)
     }
 
     /** Style a "[ ok ] …" boot line so the "[ ok ]" prefix is accent-colored. */
@@ -853,7 +863,12 @@ class MainActivity : Activity() {
                 )
                 onFire = { invokeAction(b, this) }
             }
-            tileMenu(tile, b.key) { Prefs.setActionEnabled(this, b, false) }
+            // Deleting an HTTP action removes its definition + secret too (not just the button),
+            // mirroring how removing a HASS account cleans up its scenes.
+            tileMenu(tile, b.key) {
+                if (b.kind == ActionKind.HTTP) Prefs.removeHttpAction(this, b.a)
+                else Prefs.setActionEnabled(this, b, false)
+            }
             zone.addView(tile, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(10f) })
@@ -876,9 +891,15 @@ class MainActivity : Activity() {
     private fun invokeAction(b: ActionButton, tile: ActionTileView) {
         if (tile.isPending()) return
         when (b.kind) {
-            ActionKind.SHORTCUT ->
+            ActionKind.SHORTCUT -> {
+                // Fix 9: SHORTCUT launches synchronously (never PENDING) so isPending() can't debounce
+                // it — ignore a re-tap within the debounce window so a double-tap launches once.
+                val now = SystemClock.uptimeMillis()
+                if (now - lastShortcutFireAt < SHORTCUT_DEBOUNCE_MS) return
+                lastShortcutFireAt = now
                 if (ShortcutProvider.invoke(this, b.a, b.b)) tile.flashSuccess()
                 else tile.showError("ERROR", "couldn't start shortcut")
+            }
 
             ActionKind.HASS_SCENE -> {
                 val acct = Prefs.hassAccounts(this).find { it.id == b.a }
@@ -886,7 +907,11 @@ class MainActivity : Activity() {
                 tile.showPending()
                 Thread {
                     val ok = runCatching { Hass.activateScene(acct, b.b) }.isSuccess
-                    runOnUiThread { if (ok) tile.showSuccess(200) else tile.showError("ERROR", "scene failed") }
+                    runOnUiThread {
+                        // Fix 10: onResume→renderHome may have rebuilt tiles; don't touch a detached view.
+                        if (!tile.isAttachedToWindow) return@runOnUiThread
+                        if (ok) tile.showSuccess(200) else tile.showError("ERROR", "scene failed")
+                    }
                 }.start()
             }
 
@@ -899,6 +924,10 @@ class MainActivity : Activity() {
                 Thread {
                     val res = HttpActionClient.fire(action, secret, vars)
                     runOnUiThread {
+                        // Fix 10: a background/return rebuilds tiles (renderHome); if this tile was
+                        // detached meanwhile, skip the update so it never touches a dead view.
+                        // (Full firing-state preservation across re-render is out of scope.)
+                        if (!tile.isAttachedToWindow) return@runOnUiThread
                         when {
                             res.timeout -> tile.showTimeout()
                             res.ok && (tile.isTask || res.code == 202) -> tile.showQueued(res.code)
@@ -954,5 +983,8 @@ class MainActivity : Activity() {
         // awake for ~6s after the last active tick so it reads as calm "working…", not a strobe.
         private const val AWAKE_THRESHOLD = 3L * 1024L
         private const val AWAKE_LINGER_MS = 6000L
+
+        // Ignore a second SHORTCUT invoke within this window (fast double-tap → launch once). (Fix 9.)
+        private const val SHORTCUT_DEBOUNCE_MS = 600L
     }
 }

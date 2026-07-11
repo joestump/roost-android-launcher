@@ -59,7 +59,14 @@ class ActionsActivity : SettingsScreen() {
         } else {
             body.addView(card(enabled.map { b ->
                 toggleRow(b.title, kindLabel(b.kind), true) { on ->
-                    if (!on) { Prefs.setActionEnabled(this, b, false); rebuild() }
+                    if (!on) {
+                        // Removing an HTTP action must purge its definition + stored secret too, not just
+                        // the button — otherwise the HttpAction and its Bearer/HMAC secret orphan on disk
+                        // (unreachable but lingering). Mirrors MainActivity's home-tile delete path.
+                        if (b.kind == ActionKind.HTTP) Prefs.removeHttpAction(this, b.a)
+                        else Prefs.setActionEnabled(this, b, false)
+                        rebuild()
+                    }
                 }
             }))
         }

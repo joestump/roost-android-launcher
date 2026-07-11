@@ -103,7 +103,9 @@ class WebAppsActivity : SettingsScreen() {
         return row
     }
 
-    /** The add-form "Choose icon" row: commits the entered URL then opens the picker keyed to it. */
+    /** The add-form "Choose icon" row: opens the icon picker keyed to the entered URL, without pinning
+     *  a tile — the icon override persists independently of the WebApp and the tile is created only on
+     *  "Add web app". */
     private fun chooseIconRow(currentUrl: () -> String): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -116,10 +118,9 @@ class WebAppsActivity : SettingsScreen() {
                 if (u.isEmpty()) {
                     Toast.makeText(this@WebAppsActivity, "Enter a URL first, then choose its icon.", Toast.LENGTH_SHORT).show()
                 } else {
-                    // Ensure the web app exists so the override keys onto a real tile, then pick.
-                    if (Prefs.webApps(this@WebAppsActivity).none { it.url == u }) {
-                        Prefs.addWebApp(this@WebAppsActivity, "", u)
-                    }
+                    // Do NOT create the web app here — icon overrides are keyed "web:<url>" and persist
+                    // independently of the WebApp. The tile is created only when the user taps "Add web
+                    // app"; pinning a phantom blank-name tile on "Choose icon" was a bug.
                     openIconPicker("web:$u")
                 }
             }

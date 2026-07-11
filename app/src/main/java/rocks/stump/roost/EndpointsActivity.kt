@@ -75,24 +75,24 @@ class EndpointsActivity : Activity() {
     private fun sections(): List<Pair<String, List<Template>>> = listOf(
         "Switchboard · durable tasks" to listOf(
             Template("Groom PRs", "Enqueue a PR-grooming task", "HMAC", "POST", HttpAuth.HMAC,
-                "https://switchboard.stump.rocks/hooks/task",
+                "https://your-switchboard.example.com/hooks/task",
                 "{\n  \"task\": \"groom-prs\",\n  \"device\": \"{{device}}\"\n}"),
             Template("Sync dotfiles", "Queue a dotfiles sync", "HMAC", "POST", HttpAuth.HMAC,
-                "https://switchboard.stump.rocks/hooks/task",
+                "https://your-switchboard.example.com/hooks/task",
                 "{\n  \"task\": \"sync-dotfiles\"\n}"),
             Template("Run monitor", "Kick the health monitor", "HMAC", "POST", HttpAuth.HMAC,
-                "https://switchboard.stump.rocks/hooks/task",
+                "https://your-switchboard.example.com/hooks/task",
                 "{\n  \"task\": \"run-monitor\"\n}")
         ),
         "Known services" to listOf(
             Template("Home Assistant scene", "Fire a scene · Bearer", "Bearer", "POST", HttpAuth.BEARER,
-                "https://ha.stump.rocks/api/services/scene/turn_on",
+                "https://home-assistant.example.com/api/services/scene/turn_on",
                 "{\n  \"entity_id\": \"scene.movie_night\"\n}"),
             Template("LiteLLM", "Ping the proxy", "Bearer", "POST", HttpAuth.BEARER,
-                "https://llm.stump.rocks/v1/chat/completions",
+                "https://litellm.example.com/v1/chat/completions",
                 "{\n  \"model\": \"gpt-4o-mini\"\n}"),
             Template("Gitea webhook", "Trigger a repo action", "None", "POST", HttpAuth.NONE,
-                "https://git.stump.rocks/api/v1/repos/x/dispatches",
+                "https://gitea.example.com/api/v1/repos/OWNER/REPO/dispatches",
                 "{\n  \"event_type\": \"deploy\"\n}")
         )
     )

@@ -33,6 +33,8 @@ class AppPickerActivity : SettingsScreen() {
     private var all: List<AppEntry> = emptyList()
     private var query = ""
     private lateinit var grid: LinearLayout
+    // The "N pinned" hint (FAVORITES mode) — kept so onPick can refresh its count live. (Fix 5.)
+    private var hintLabel: TextView? = null
 
     override fun screenTitle(): String =
         if (mode == MODE_FEATURED) "Choose agent app" else "Favorites"
@@ -69,7 +71,8 @@ class AppPickerActivity : SettingsScreen() {
         })
         body.addView(search)
 
-        body.addView(hint(pickerHint()).apply { setPadding(dp(4f), dp(10f), dp(4f), dp(12f)) })
+        hintLabel = hint(pickerHint()).apply { setPadding(dp(4f), dp(10f), dp(4f), dp(12f)) }
+        body.addView(hintLabel)
 
         grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         body.addView(grid)
@@ -175,7 +178,8 @@ class AppPickerActivity : SettingsScreen() {
             val favs = Prefs.favorites(this)
             if (favs.contains(entry.pkg)) favs.remove(entry.pkg) else favs.add(entry.pkg)
             Prefs.setFavorites(this, favs)
-            populate()   // repaint check states + the "N pinned" hint stays until next open
+            populate()                        // repaint check states
+            hintLabel?.text = pickerHint()    // and refresh the "N pinned" count live (Fix 5)
         }
     }
 
