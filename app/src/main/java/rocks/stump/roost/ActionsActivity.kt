@@ -1,9 +1,14 @@
 package rocks.stump.roost
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Typeface
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -32,36 +37,42 @@ class ActionsActivity : SettingsScreen() {
 
     override fun screenTitle(): String = getString(R.string.actions_title)
 
-    override fun buildContent(body: LinearLayout) {
-        // --- 0. Display density (whole-zone tile density — SPEC-0002) ------------------------
-        // One setting drives every action tile's look on the home screen. Rebuild on change so the
-        // segmented control reflects the committed value immediately.
-        body.addView(sectionHeader("Display density", firstOnScreen = true))
-        val densities = listOf(ActionDensity.SLIM, ActionDensity.REGULAR, ActionDensity.RICH)
-        val selected = densities.indexOf(Prefs.actionDensity(this)).coerceAtLeast(0)
-        body.addView(segmented(listOf("Slim", "Regular", "Rich"), selected) { i ->
-            Prefs.setActionDensity(this, densities[i])
-            rebuild()
-        })
-        body.addView(hint("How action tiles look on the home screen."))
+    // Rebuild the whole screen on return so a newly-added/edited HTTP action (saved in the builder, which
+    // finishes back to here) or a fresh icon override shows immediately (Bug 2). Skip the first onResume —
+    // onCreate already built the screen — so we don't build twice on entry. rebuild() replaces the content
+    // view wholesale, so there is never any double-adding of views.
+    private var builtOnce = false
 
+    override fun onResume() {
+        super.onResume()
+        if (builtOnce) rebuild() else builtOnce = true
+    }
+
+    override fun buildContent(body: LinearLayout) {
         // --- 1. HTTP actions (primary) -------------------------------------------------------
-        body.addView(sectionHeader("HTTP actions"))
+        body.addView(sectionHeader("HTTP actions", firstOnScreen = true))
         val httpButtons = Prefs.actionButtons(this).filter { it.kind == ActionKind.HTTP }
         val httpRows = mutableListOf<View>()
         for (b in httpButtons) {
             val act = Prefs.httpAction(this, b.a)
             val sub = if (act != null) "${act.method} · ${HttpActionClient.hostOf(act.url)}" else "HTTP action"
-            httpRows.add(navRow(R.drawable.ic_scene, b.title, sub) {
+            val open = {
                 startActivity(Intent(this, HttpActionActivity::class.java)
                     .putExtra(HttpActionActivity.EXTRA_ID, b.a))
-            })
+            }
+            // Bug 3: honour a chosen icon override (e.g. Jellyfin) here too — the home already resolves
+            // overrideIcon(b.key); Settings must match instead of always showing the ic_scene sparkle.
+            val override = Prefs.iconOverride(this, b.key)?.let { IconStore.drawableFor(this, it) }
+            httpRows.add(
+                if (override != null) navRow(override, b.title, sub) { open() }
+                else navRow(R.drawable.ic_scene, b.title, sub) { open() }
+            )
         }
         httpRows.add(newActionRow())
         body.addView(card(httpRows))
         body.addView(hint("Every “POST something and show if it worked” button — Home Assistant scenes included — is one saved HTTP action."))
 
-        // --- 2. Enabled buttons --------------------------------------------------------------
+        // --- 2. Enabled buttons (long-press-and-drag to reorder — Bug 1) ---------------------
         body.addView(sectionHeader("Enabled buttons"))
         val enabled = Prefs.actionButtons(this)
         if (enabled.isEmpty()) {
@@ -69,18 +80,15 @@ class ActionsActivity : SettingsScreen() {
                 setPadding(dp(16f), dp(16f), dp(16f), dp(16f))
             })))
         } else {
-            body.addView(card(enabled.map { b ->
-                toggleRow(b.title, kindLabel(b.kind), true) { on ->
-                    if (!on) {
-                        // Removing an HTTP action must purge its definition + stored secret too, not just
-                        // the button — otherwise the HttpAction and its Bearer/HMAC secret orphan on disk
-                        // (unreachable but lingering). Mirrors MainActivity's home-tile delete path.
-                        if (b.kind == ActionKind.HTTP) Prefs.removeHttpAction(this, b.a)
-                        else Prefs.setActionEnabled(this, b, false)
-                        rebuild()
-                    }
-                }
-            }))
+            // A manual drag-reorder column (framework-only, no RecyclerView/ItemTouchHelper). Dropping
+            // persists the new order, and MainActivity's Actions zone renders in Prefs.actionButtons()
+            // order, so this reorders the home too.
+            val list = DragReorderColumn(this) { ordered ->
+                Prefs.setActionButtons(this, ordered.mapNotNull { it.tag as? ActionButton })
+            }
+            enabled.forEach { list.addView(enabledButtonRow(it)) }
+            body.addView(list)
+            body.addView(hint("Long-press a button and drag to reorder — the order carries to the home Actions zone."))
         }
 
         // --- 3. Home Assistant ---------------------------------------------------------------
@@ -319,5 +327,165 @@ class ActionsActivity : SettingsScreen() {
         ActionKind.HTTP -> "HTTP action"
         ActionKind.HASS_SCENE -> "Home Assistant scene"
         ActionKind.SHORTCUT -> "App shortcut"
+    }
+
+    // --- Enabled-buttons reorder (Bug 1) -----------------------------------------------------
+
+    /**
+     * One draggable row in the Enabled-buttons list: a drag-handle affordance, the button label + kind,
+     * and the off-to-remove toggle. Its [ActionButton] rides on the view tag so [DragReorderColumn] can
+     * read back the committed order on drop. Each row is its own rounded card (no shared dividers) so the
+     * drag column can reorder plain direct children.
+     */
+    private fun enabledButtonRow(b: ActionButton): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Roost.rounded(rowBg(), dp(14f).toFloat(), rowBorder(), dp(1f))
+            setPadding(dp(12f), dp(12f), dp(14f), dp(12f))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8f) }
+            tag = b
+        }
+        row.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_drag_handle)
+            setColorFilter(SUBTLE)
+            layoutParams = LinearLayout.LayoutParams(dp(20f), dp(20f)).apply { rightMargin = dp(11f) }
+        })
+        val stack = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        stack.addView(TextView(this).apply {
+            text = b.title; setTextColor(ROW_LABEL); textSize = 14.5f; maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        stack.addView(TextView(this).apply {
+            text = kindLabel(b.kind); setTextColor(SUBTLE); textSize = 11.5f
+            setPadding(0, dp(2f), 0, 0)
+        })
+        row.addView(stack)
+        row.addView(toggle(true) { on ->
+            if (!on) {
+                // Removing an HTTP action must purge its definition + stored secret too, not just the
+                // button — otherwise the HttpAction and its Bearer/HMAC secret orphan on disk. Mirrors
+                // MainActivity's home-tile delete path.
+                if (b.kind == ActionKind.HTTP) Prefs.removeHttpAction(this, b.a)
+                else Prefs.setActionEnabled(this, b, false)
+                rebuild()
+            }
+        })
+        return row
+    }
+
+    /**
+     * A framework-only long-press-and-drag reorder column (no RecyclerView / ItemTouchHelper). On a
+     * long-press over a child row it "lifts" the row (raised elevation + a slight scale/alpha), follows
+     * the finger via translationY, and swaps the row past a neighbour once its centre crosses that
+     * neighbour's midpoint — reordering the live view list. On drop it reports the final child order to
+     * [onOrder] (which persists it). A short pre-drag move (a scroll or a tap) cancels the pick-up so the
+     * enclosing ScrollView and the per-row toggle keep working.
+     */
+    private inner class DragReorderColumn(
+        context: Context,
+        private val onOrder: (List<View>) -> Unit
+    ) : LinearLayout(context) {
+
+        private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+        private val longPressMs = ViewConfiguration.getLongPressTimeout().toLong()
+        private val handler = Handler(Looper.getMainLooper())
+
+        private var candidate: View? = null
+        private var dragging: View? = null
+        private var downY = 0f
+        private var lastRawY = 0f
+
+        private val startDrag = Runnable { candidate?.let { lift(it) } }
+
+        init {
+            orientation = VERTICAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        }
+
+        private fun childUnder(y: Float): View? {
+            for (i in 0 until childCount) {
+                val c = getChildAt(i)
+                if (y >= c.top && y <= c.bottom) return c
+            }
+            return null
+        }
+
+        private fun lift(v: View) {
+            dragging = v
+            v.alpha = 0.92f
+            v.scaleX = 1.02f; v.scaleY = 1.02f
+            v.translationZ = dp(8f).toFloat()
+            parent?.requestDisallowInterceptTouchEvent(true)
+        }
+
+        override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    candidate = childUnder(ev.y)
+                    downY = ev.y
+                    lastRawY = ev.rawY
+                    dragging = null
+                    if (candidate != null) handler.postDelayed(startDrag, longPressMs)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    // A pre-lift move beyond slop is a scroll/tap, not a drag — cancel the pick-up.
+                    if (dragging == null && Math.abs(ev.y - downY) > touchSlop) handler.removeCallbacks(startDrag)
+                    if (dragging != null) return true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> handler.removeCallbacks(startDrag)
+            }
+            return dragging != null
+        }
+
+        override fun onTouchEvent(ev: MotionEvent): Boolean {
+            val d = dragging ?: return false
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    d.translationY += ev.rawY - lastRawY
+                    lastRawY = ev.rawY
+                    maybeSwap(d)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> drop(d)
+            }
+            return true
+        }
+
+        private fun maybeSwap(d: View) {
+            val idx = indexOfChild(d)
+            val center = d.top + d.height / 2f + d.translationY
+            if (idx > 0) {
+                val prev = getChildAt(idx - 1)
+                if (center < prev.top + prev.height / 2f) { reinsert(d, idx - 1); return }
+            }
+            if (idx < childCount - 1) {
+                val next = getChildAt(idx + 1)
+                if (center > next.top + next.height / 2f) { reinsert(d, idx + 1); return }
+            }
+        }
+
+        // Move the dragged view to [to] while keeping it visually under the finger: its `top` changes at
+        // the next layout, so re-derive translationY from where it was actually sitting.
+        private fun reinsert(d: View, to: Int) {
+            val visualTop = d.top + d.translationY
+            removeView(d)
+            addView(d, to)
+            d.post { d.translationY = visualTop - d.top }
+        }
+
+        private fun drop(d: View) {
+            d.animate().translationY(0f).setDuration(120).start()
+            d.alpha = 1f
+            d.scaleX = 1f; d.scaleY = 1f
+            d.translationZ = 0f
+            dragging = null
+            candidate = null
+            onOrder((0 until childCount).map { getChildAt(it) })
+        }
     }
 }

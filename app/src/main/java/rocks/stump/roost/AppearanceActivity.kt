@@ -25,6 +25,16 @@ class AppearanceActivity : SettingsScreen() {
         body.addView(swatchRow())
         body.addView(hint("Tints the mascot, highlights and controls across Roost. Match it to your model."))
 
+        // --- Action density (one setting for the whole home Actions zone — SPEC-0002) ---
+        body.addView(sectionHeader("Action density"))
+        val densities = listOf(ActionDensity.SLIM, ActionDensity.REGULAR, ActionDensity.RICH)
+        val selected = densities.indexOf(Prefs.actionDensity(this)).coerceAtLeast(0)
+        body.addView(segmented(listOf("Slim", "Regular", "Rich"), selected) { i ->
+            Prefs.setActionDensity(this, densities[i])
+            rebuild()
+        })
+        body.addView(hint("How the home Actions zone renders its tiles — also switchable from the zone header."))
+
         // --- Wallpaper ---
         body.addView(sectionHeader("Wallpaper"))
         val row = LinearLayout(this).apply {

@@ -820,14 +820,17 @@ class MainActivity : Activity() {
 
     // --- Actions zone (pluggable — SPEC-0001 / SPEC-0002) -----------------------------------
 
-    // A dedicated "Actions" band below the app grid: a mono uppercase header + "+ new" link, then a
-    // vertical column of ActionTileView tiles (one per enabled ActionButton). HTTP and HASS_SCENE
-    // buttons fire through the on-tile state machine; SHORTCUT buttons launch on tap. No actions → no
-    // zone (the whole band is null).
+    // A dedicated "Actions" band below the app grid: a mono uppercase header with an inline density
+    // switcher (slim / regular / rich pill) + a "+" button, then the enabled ActionButtons as tiles.
+    // SLIM/REGULAR render as a vertical list; RICH lays the cards into a 2-column grid. HTTP and
+    // HASS_SCENE buttons fire through the on-tile state machine; SHORTCUT buttons launch on tap. No
+    // actions → no zone (the whole band is null).
     // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Actions zone placement"
     private fun actionsZone(): View? {
         val buttons = Prefs.actionButtons(this).filter { !Prefs.isHidden(this, it.key) }
         if (buttons.isEmpty()) return null
+
+        val density = Prefs.actionDensity(this)
 
         val zone = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -850,45 +853,122 @@ class MainActivity : Activity() {
             typeface = Typeface.MONOSPACE
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        head.addView(TextView(this).apply {
-            text = "+ new"
-            setTextColor(accent)
-            textSize = 10f
-            typeface = Typeface.MONOSPACE
-            isClickable = true
-            setOnClickListener { startActivity(Intent(this@MainActivity, EndpointsActivity::class.java)) }
-        })
+        head.addView(densitySwitcher(density))
+        head.addView(actionsPlusButton())
         zone.addView(head)
 
-        // One zone-wide density (SPEC-0002). SLIM rows are divider-separated, so they drop the
-        // inter-row gap; REGULAR/RICH cards keep the ~10dp breathing room.
-        val density = Prefs.actionDensity(this)
-        buttons.forEach { b ->
-            val http = if (b.kind == ActionKind.HTTP) Prefs.httpAction(this, b.a) else null
-            val isTask = http != null && HttpActionClient.hostOf(http.url).contains("switchboard")
-            val host = http?.let { HttpActionClient.hostOf(it.url) } ?: ""
-            val tile = ActionTileView(this, accent).apply {
-                bind(
-                    title = b.title.substringAfterLast(" · "),
-                    idleIcon = overrideIcon(b.key) ?: actionIcon(b),
-                    isTask = isTask,
-                    host = host,
-                    method = http?.method ?: "",
-                    density = density
-                )
-                onFire = { invokeAction(b, this) }
+        // One zone-wide density (SPEC-0002). RICH is a 2-column card grid; SLIM/REGULAR a vertical list.
+        // Gap between rows: 5dp SLIM, 9dp REGULAR, 10dp RICH — the first item hugs the header.
+        if (density == ActionDensity.RICH) {
+            buttons.chunked(2).forEachIndexed { rowIndex, pair ->
+                val gridRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = if (rowIndex == 0) 0 else dp(10f) }
+                }
+                pair.forEachIndexed { col, b ->
+                    gridRow.addView(buildActionTile(b, density), LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+                    ).apply { if (col > 0) leftMargin = dp(10f) })
+                }
+                // A lone last tile takes one column; a weighted spacer keeps it half-width.
+                if (pair.size == 1) gridRow.addView(View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, 1, 1f).apply { leftMargin = dp(10f) }
+                })
+                zone.addView(gridRow)
             }
-            // Deleting an HTTP action removes its definition + secret too (not just the button),
-            // mirroring how removing a HASS account cleans up its scenes.
-            tileMenu(tile, b.key) {
-                if (b.kind == ActionKind.HTTP) Prefs.removeHttpAction(this, b.a)
-                else Prefs.setActionEnabled(this, b, false)
+        } else {
+            val gap = if (density == ActionDensity.SLIM) dp(5f) else dp(9f)
+            buttons.forEachIndexed { i, b ->
+                zone.addView(buildActionTile(b, density), LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = if (i == 0) 0 else gap })
             }
-            zone.addView(tile, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = if (density == ActionDensity.SLIM) 0 else dp(10f) })
         }
         return zone
+    }
+
+    /** Build one configured action tile (bind + delete-menu) for the given [density]. */
+    private fun buildActionTile(b: ActionButton, density: ActionDensity): ActionTileView {
+        val http = if (b.kind == ActionKind.HTTP) Prefs.httpAction(this, b.a) else null
+        val isTask = http != null && HttpActionClient.hostOf(http.url).contains("switchboard")
+        val host = http?.let { HttpActionClient.hostOf(it.url) } ?: ""
+        val tile = ActionTileView(this, accent).apply {
+            bind(
+                title = b.title.substringAfterLast(" · "),
+                idleIcon = overrideIcon(b.key) ?: actionIcon(b),
+                isTask = isTask,
+                host = host,
+                method = http?.method ?: "",
+                density = density
+            )
+            onFire = { invokeAction(b, this) }
+        }
+        // Deleting an HTTP action removes its definition + secret too (not just the button),
+        // mirroring how removing a HASS account cleans up its scenes.
+        tileMenu(tile, b.key) {
+            if (b.kind == ActionKind.HTTP) Prefs.removeHttpAction(this, b.a)
+            else Prefs.setActionEnabled(this, b, false)
+        }
+        return tile
+    }
+
+    // The inline density switcher (PART B): a rounded pill of three icon chips (slim / regular / rich).
+    // The selected chip gets a soft-accent bg + accent tint; the rest read MUTED. Tapping commits the
+    // new density and re-renders the home so the Actions zone reflows immediately.
+    private fun densitySwitcher(current: ActionDensity): View {
+        val pill = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Roost.rounded(
+                Roost.withAlpha(0xFFFFFFFF.toInt(), 0x0A), dp(9f).toFloat(),
+                Roost.withAlpha(0xFFFFFFFF.toInt(), 0x10), dp(1f)
+            )
+            setPadding(dp(2f), dp(2f), dp(2f), dp(2f))
+        }
+        val chips = listOf(
+            ActionDensity.SLIM to R.drawable.ic_density_slim,
+            ActionDensity.REGULAR to R.drawable.ic_density_reg,
+            ActionDensity.RICH to R.drawable.ic_density_rich
+        )
+        chips.forEach { (d, res) ->
+            val on = d == current
+            val chip = FrameLayout(this).apply {
+                background = if (on) Roost.rounded(Roost.soft(accent), dp(6f).toFloat()) else null
+                layoutParams = LinearLayout.LayoutParams(dp(26f), dp(22f))
+                isClickable = true
+                setOnClickListener {
+                    if (Prefs.actionDensity(this@MainActivity) != d) {
+                        Prefs.setActionDensity(this@MainActivity, d)
+                        render()
+                    }
+                }
+            }
+            chip.addView(ImageView(this).apply {
+                setImageResource(res)
+                setColorFilter(if (on) accent else Roost.MUTED)
+                layoutParams = FrameLayout.LayoutParams(dp(13f), dp(13f), Gravity.CENTER)
+            })
+            pill.addView(chip)
+        }
+        return pill
+    }
+
+    /** The "+" button beside the density switcher — opens the HTTP-action builder (was "+ new"). */
+    private fun actionsPlusButton(): View {
+        val holder = FrameLayout(this).apply {
+            background = Roost.rounded(Roost.soft(accent), dp(9f).toFloat())
+            layoutParams = LinearLayout.LayoutParams(dp(27f), dp(27f)).apply { leftMargin = dp(6f) }
+            isClickable = true
+            setOnClickListener { startActivity(Intent(this@MainActivity, EndpointsActivity::class.java)) }
+        }
+        holder.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_plus)
+            setColorFilter(accent)
+            layoutParams = FrameLayout.LayoutParams(dp(15f), dp(15f), Gravity.CENTER)
+        })
+        return holder
     }
 
     // Governing: ADR-0002 (pluggable action-button providers), SPEC-0002 REQ "General HTTP-action definition"

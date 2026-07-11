@@ -299,6 +299,36 @@ abstract class SettingsScreen : Activity() {
         return row
     }
 
+    /**
+     * A card-internal value row whose leading icon is a real [Drawable] (e.g. a chosen icon override),
+     * shown untinted on a tile surface. Same footprint as the icon-res [navRow] so the two mix inside
+     * one [card] — used when an action row has a user-picked icon instead of the default glyph.
+     */
+    protected fun navRow(icon: android.graphics.drawable.Drawable, label: String, sub: String?, onClick: () -> Unit): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16f), dp(14f), dp(16f), dp(14f))
+            isClickable = true
+            setOnClickListener { onClick() }
+        }
+        val holder = FrameLayout(this).apply {
+            background = Roost.rounded(Roost.TILE, dp(11f).toFloat(), Roost.HAIRLINE, dp(1f))
+            layoutParams = LinearLayout.LayoutParams(dp(36f), dp(36f)).apply { rightMargin = dp(13f) }
+        }
+        holder.addView(ImageView(this).apply {
+            setImageDrawable(icon)
+            val p = dp(6f); setPadding(p, p, p, p)
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        })
+        row.addView(holder)
+        row.addView(labelStack(label, sub, Roost.TEXT))
+        row.addView(chevron())
+        return row
+    }
+
     /** A nav row whose leading icon is a real Drawable (e.g. an app icon), shown on a tile surface. */
     protected fun navRowDrawable(icon: android.graphics.drawable.Drawable?, label: String, sub: String?, onClick: () -> Unit): View {
         val row = LinearLayout(this).apply {
