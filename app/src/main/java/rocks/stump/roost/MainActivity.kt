@@ -42,6 +42,8 @@ class MainActivity : Activity() {
     private var greetingLabel: TextView? = null
     private var statusLabel: TextView? = null
     private var vpnChipView: TextView? = null
+    private var rxRate = 0L
+    private var txRate = 0L
 
     private var batteryRegistered = false
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -115,11 +117,35 @@ class MainActivity : Activity() {
         col.addView(weightedSpacer())
         col.addView(appsSettingsLink(dp(16f)))
 
-        setContentView(ScrollView(this).apply {
-            background = Roost.dockBackground(this@MainActivity)
+        val scroll = ScrollView(this).apply {
             isFillViewport = true
             addView(col)
+        }
+        setContentView(FrameLayout(this).apply {
+            background = Roost.dockBackground(this@MainActivity)
+            if (Prefs.bandwidthGraph(this@MainActivity)) {
+                addView(
+                    bandwidthView(),
+                    FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(110f))
+                        .apply { gravity = Gravity.BOTTOM }
+                )
+            }
+            addView(
+                scroll,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
         })
+    }
+
+    private fun bandwidthView(): BandwidthView = BandwidthView(this).apply {
+        accent = this@MainActivity.accent
+        onSample = { rxps, txps ->
+            rxRate = rxps
+            txRate = txps
+            refreshVpnChip()
+        }
     }
 
     // --- Appliance "at rest" face -----------------------------------------------------------
@@ -369,12 +395,22 @@ class MainActivity : Activity() {
 
     private fun applyVpnChip(chip: TextView) {
         val up = vpnUp()
-        chip.text = getString(if (up) R.string.vpn_up else R.string.vpn_off)
+        val base = getString(if (up) R.string.vpn_up else R.string.vpn_off)
+        chip.text = if (up && (rxRate > 0 || txRate > 0))
+            "$base  ↓${formatRate(rxRate)} ↑${formatRate(txRate)}" else base
         chip.setTextColor(if (up) accent else Roost.MUTED)
         chip.background = Roost.rounded(
             if (up) Roost.soft(accent) else Roost.TILE, dp(20f).toFloat(),
             if (up) Roost.soft(accent) else Roost.HAIRLINE, dp(1f)
         )
+    }
+
+    private fun formatRate(bps: Long): String {
+        val units = arrayOf("B", "K", "M", "G")
+        var v = bps.toDouble()
+        var i = 0
+        while (v >= 1024 && i < units.size - 1) { v /= 1024; i++ }
+        return if (i == 0 || v >= 100) "${v.toInt()}${units[i]}" else String.format("%.1f%s", v, units[i])
     }
 
     private fun refreshVpnChip() = vpnChipView?.let { applyVpnChip(it) }

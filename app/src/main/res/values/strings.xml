@@ -47,6 +47,7 @@
     <string name="settings_behavior">Behavior</string>
     <string name="behavior_boot">Auto-launch agent on boot</string>
     <string name="behavior_screen">Keep screen on while docked</string>
+    <string name="behavior_bandwidth">Bandwidth heartbeat</string>
 
     <string name="settings_accent">Accent tint</string>
 

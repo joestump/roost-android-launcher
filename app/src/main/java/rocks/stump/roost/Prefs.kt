@@ -32,6 +32,7 @@ object Prefs {
     private const val K_MODE = "mode"
     private const val K_BOOT_LAUNCH = "auto_launch_boot"
     private const val K_KEEP_SCREEN_ON = "keep_screen_on"
+    private const val K_BANDWIDTH = "bandwidth_graph"
     private const val K_AGENT_PKG = "agent_pkg"
     private const val K_FAVORITES = "favorites"
     private const val K_PENDING_BOOT = "pending_boot_launch"
@@ -54,6 +55,9 @@ object Prefs {
 
     fun keepScreenOn(c: Context): Boolean = sp(c).getBoolean(K_KEEP_SCREEN_ON, true)
     fun setKeepScreenOn(c: Context, v: Boolean) = sp(c).edit().putBoolean(K_KEEP_SCREEN_ON, v).apply()
+
+    fun bandwidthGraph(c: Context): Boolean = sp(c).getBoolean(K_BANDWIDTH, true)
+    fun setBandwidthGraph(c: Context, v: Boolean) = sp(c).edit().putBoolean(K_BANDWIDTH, v).apply()
 
     fun agentPkg(c: Context): String = sp(c).getString(K_AGENT_PKG, DEFAULT_AGENT_PKG) ?: DEFAULT_AGENT_PKG
     fun setAgentPkg(c: Context, v: String) = sp(c).edit().putString(K_AGENT_PKG, v).apply()

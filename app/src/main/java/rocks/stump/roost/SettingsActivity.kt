@@ -58,6 +58,9 @@ class SettingsActivity : Activity() {
         col.addView(switchRow(getString(R.string.behavior_screen), Prefs.keepScreenOn(this)) {
             Prefs.setKeepScreenOn(this, it)
         })
+        col.addView(switchRow(getString(R.string.behavior_bandwidth), Prefs.bandwidthGraph(this)) {
+            Prefs.setBandwidthGraph(this, it)
+        })
 
         // --- Action buttons ---
         col.addView(header(getString(R.string.settings_actions)))
