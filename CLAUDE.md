@@ -1,0 +1,49 @@
+# Roost — project context for Claude
+
+Roost is a tiny, **vendor-neutral** Android home-screen launcher that turns a spare phone into a dedicated
+device for an AI agent. It boots into the owner's agent app and keeps a curated set of apps, web apps, and
+action buttons one tap away. Package `rocks.stump.roost`.
+
+- **Primary repo:** https://gitea.stump.rocks/joestump/roost-android-launcher (auto-mirrors to
+  https://github.com/joestump/roost-android-launcher)
+- **Docs site:** https://joestump.github.io/roost-android-launcher/ (and Gitea Pages)
+
+## Architecture Context
+
+- **Architecture Decision Records** are in `docs/adrs/` (MADR format).
+- **Specifications** are in `docs/openspec/` (paired `spec.md` + `design.md` per capability).
+
+Read these before making architectural changes. Current set:
+
+- **ADR-0001 — Framework-only, zero-dependency launcher.** Pure Android framework: no AndroidX, no
+  Compose, no Material, no third-party libraries. Programmatic views, `Canvas`/`VectorDrawable`, system
+  fonts, `SharedPreferences`, `HttpURLConnection` + `org.json`. Enforced by an **empty `dependencies {}`**
+  block and `android.useAndroidX=false` in `app/build.gradle.kts`. **Do not add dependencies** without
+  superseding this ADR.
+- **ADR-0002 — Pluggable action-button providers.** Uniform `ActionButton(kind, key, title, a, b)` model;
+  each provider is a stateless object with scan + invoke. First providers: Android app-shortcuts, Home
+  Assistant scenes. Governs SPEC-0001.
+- **SPEC-0001 — Action Buttons** (`docs/openspec/action-buttons/`).
+
+When implementing code governed by an artifact, leave a governing comment:
+`// Governing: ADR-0002 (pluggable action-button providers), SPEC-0001 REQ "Requirement Name"`.
+
+## Build & run
+
+Requires JDK 17 and the Android SDK (platform 34, build-tools 34.0.0).
+
+```bash
+export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell cmd package set-home-activity rocks.stump.roost/.MainActivity
+```
+
+Reference device: Pixel 7a / Android 15. There is no test suite; verify changes on-device
+(`uiautomator dump` is handy for confirming the view tree renders).
+
+## Docs site
+
+`docs-site/` is a Docusaurus project deploying to GitHub Pages + Gitea Pages. Gotchas: pin webpack
+`5.105.2`, keep all `@docusaurus/*` at the exact same version, no mermaid (SSR ReactContextError on 3.9.2).
