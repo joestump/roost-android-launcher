@@ -96,4 +96,5 @@
 
     <string name="settings_favorites">Favorites (shown on the grid)</string>
     <string name="open_android_settings">Open Android Settings</string>
+    <string name="open_android_settings_full">Open Android system settings</string>
 </resources>

@@ -1,371 +1,137 @@
 package rocks.stump.roost
 
-import android.app.Activity
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.graphics.Typeface
-import android.os.Bundle
 import android.provider.Settings
-import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
-import android.widget.ScrollView
-import android.widget.Switch
 import android.widget.TextView
-import android.widget.Toast
 
-/** Settings + favorites picker + accent-tint chooser, styled per the "Roost" palette. */
-class SettingsActivity : Activity() {
+/**
+ * Settings LANDING (ADR-0005): a short list of category rows, each opening its own detail Activity via
+ * the system back stack. Replaces the old monolithic scroll — no capability was dropped, only regrouped
+ * (every former control now lives behind one of these categories, mapped 1:1 in the ADR's category tree).
+ *
+ * Governing: ADR-0005 (settings navigation IA)
+ */
+class SettingsActivity : SettingsScreen() {
 
-    private val accent: Int get() = Prefs.accent(this)
-    private fun dp(v: Float): Int = Roost.dp(this, v)
+    override fun screenTitle(): String = "Settings"
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun buildContent(body: LinearLayout) {
+        body.addView(deviceStrip())
+        body.addView(gap(dp(20f)))
 
-        val col = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(22f), dp(30f), dp(22f), dp(44f))
-        }
+        // Home & behavior → BehaviorActivity
+        val modeLabel = if (Prefs.mode(this) == Prefs.MODE_APPLIANCE) "Boot-direct" else "Curated"
+        body.addView(categoryRow(
+            R.drawable.ic_cat_home, "Home & behavior",
+            "$modeLabel · auto-launch · screen on"
+        ) { open(BehaviorActivity::class.java) })
 
-        col.addView(title(getString(R.string.settings_title)))
+        // Agent → AgentActivity
+        val agentName = Prefs.agentName(this).trim().ifEmpty { "unnamed" }
+        val featured = appLabel(Prefs.agentPkg(this)) ?: "not set"
+        body.addView(categoryRow(
+            R.drawable.ic_cat_agent, "Agent",
+            "$agentName · $featured"
+        ) { open(AgentActivity::class.java) })
 
-        // --- Home mode ---
-        col.addView(header(getString(R.string.settings_mode)))
-        val modeGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
-        val curated = radio(getString(R.string.mode_curated))
-        val appliance = radio(getString(R.string.mode_appliance))
-        modeGroup.addView(curated)
-        modeGroup.addView(appliance)
-        if (Prefs.mode(this) == Prefs.MODE_APPLIANCE) appliance.isChecked = true else curated.isChecked = true
-        modeGroup.setOnCheckedChangeListener { _, id ->
-            Prefs.setMode(this, if (id == appliance.id) Prefs.MODE_APPLIANCE else Prefs.MODE_CURATED)
-        }
-        col.addView(modeGroup)
+        // Appearance → AppearanceActivity
+        body.addView(categoryRow(
+            R.drawable.ic_cat_appearance, "Appearance",
+            "Accent tint · wallpaper"
+        ) { open(AppearanceActivity::class.java) })
 
-        // --- Behavior ---
-        col.addView(header(getString(R.string.settings_behavior)))
-        col.addView(switchRow(getString(R.string.behavior_boot), Prefs.autoLaunchOnBoot(this)) {
-            Prefs.setAutoLaunchOnBoot(this, it)
-        })
-        col.addView(switchRow(getString(R.string.behavior_screen), Prefs.keepScreenOn(this)) {
-            Prefs.setKeepScreenOn(this, it)
-        })
-        col.addView(switchRow(getString(R.string.behavior_bandwidth), Prefs.bandwidthGraph(this)) {
-            Prefs.setBandwidthGraph(this, it)
-        })
+        // Apps, tiles & content → AppsActivity
+        body.addView(categoryRow(
+            R.drawable.ic_cat_grid, "Apps, tiles & content",
+            "Favorites · web apps · actions · hidden"
+        ) { open(AppsActivity::class.java) })
 
-        // --- Action buttons ---
-        col.addView(header(getString(R.string.settings_actions)))
-        col.addView(TextView(this).apply {
-            text = getString(R.string.settings_actions_open)
-            setTextColor(accent)
-            textSize = 15f
-            setPadding(0, dp(4f), 0, dp(4f))
-            setOnClickListener { startActivity(Intent(this@SettingsActivity, ActionsActivity::class.java)) }
-        })
+        // Network → NetworkActivity
+        val tunnel = Prefs.wireguardTunnel(this).trim().ifEmpty { "no tunnel" }
+        body.addView(categoryRow(
+            R.drawable.ic_cat_network, "Network",
+            "WireGuard · $tunnel"
+        ) { open(NetworkActivity::class.java) })
 
-        // --- Accent tint ---
-        col.addView(header(getString(R.string.settings_accent)))
-        col.addView(accentSwatches())
-
-        // --- Wallpaper ---
-        col.addView(header(getString(R.string.settings_wallpaper)))
-        col.addView(Button(this).apply {
-            text = getString(R.string.settings_wallpaper_apply)
-            setOnClickListener {
-                val ok = Roost.applyWallpaper(this@SettingsActivity)
-                Prefs.setWallpaperApplied(this@SettingsActivity, true)
-                Toast.makeText(
-                    this@SettingsActivity,
-                    if (ok) R.string.wallpaper_set else R.string.wallpaper_failed,
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        })
-
-        // --- Agent name ---
-        col.addView(header(getString(R.string.settings_agent_name)))
-        val nameEdit = EditText(this).apply {
-            setText(Prefs.agentName(this@SettingsActivity))
-            hint = getString(R.string.agent_name_hint)
-            inputType = InputType.TYPE_CLASS_TEXT
-            setTextColor(Roost.TEXT)
-            setHintTextColor(Roost.MUTED)
-        }
-        col.addView(nameEdit)
-        col.addView(Button(this).apply {
-            text = getString(R.string.settings_pkg_save)
-            setOnClickListener {
-                Prefs.setAgentName(this@SettingsActivity, nameEdit.text.toString().trim())
-                Toast.makeText(this@SettingsActivity, R.string.saved, Toast.LENGTH_SHORT).show()
-            }
-        })
-
-        // --- Featured agent app ---
-        col.addView(header(getString(R.string.settings_pkg)))
-        val pkgEdit = EditText(this).apply {
-            setText(Prefs.agentPkg(this@SettingsActivity))
-            inputType = InputType.TYPE_CLASS_TEXT
-            setTextColor(Roost.TEXT)
-            setHintTextColor(Roost.MUTED)
-        }
-        col.addView(pkgEdit)
-        col.addView(Button(this).apply {
-            text = getString(R.string.settings_pkg_save)
-            setOnClickListener {
-                val v = pkgEdit.text.toString().trim()
-                if (v.isNotEmpty()) {
-                    Prefs.setAgentPkg(this@SettingsActivity, v)
-                    Toast.makeText(this@SettingsActivity, R.string.saved, Toast.LENGTH_SHORT).show()
-                }
-            }
-        })
-
-        // --- Favorites ---
-        col.addView(header(getString(R.string.settings_favorites)))
-        val favs = Prefs.favorites(this)
-        for ((pkg, label) in installedLaunchable()) {
-            col.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(6f), 0, dp(6f))
-                addView(CheckBox(this@SettingsActivity).apply {
-                    isChecked = favs.contains(pkg)
-                    buttonTintList = checkedCsl()
-                    setOnCheckedChangeListener { _, checked ->
-                        val cur = Prefs.favorites(this@SettingsActivity)
-                        if (checked) cur.add(pkg) else cur.remove(pkg)
-                        Prefs.setFavorites(this@SettingsActivity, cur)
-                    }
-                })
-                addView(TextView(this@SettingsActivity).apply {
-                    text = "$label\n$pkg"
-                    setTextColor(Roost.MUTED)
-                    textSize = 14f
-                })
-            })
-        }
-
-        // --- Web apps (self-hosted dashboards, etc.) ---
-        col.addView(header(getString(R.string.settings_webapps)))
-        for (wa in Prefs.webApps(this)) {
-            col.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(6f), 0, dp(6f))
-                addView(TextView(this@SettingsActivity).apply {
-                    text = "${wa.name}\n${wa.url}"
-                    setTextColor(Roost.MUTED)
-                    textSize = 14f
-                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                })
-                addView(Button(this@SettingsActivity).apply {
-                    text = getString(R.string.remove)
-                    setOnClickListener {
-                        Prefs.removeWebApp(this@SettingsActivity, wa.url)
-                        recreate()
-                    }
-                })
-            })
-        }
-        val waName = EditText(this).apply {
-            hint = getString(R.string.webapp_name_hint)
-            inputType = InputType.TYPE_CLASS_TEXT
-            setTextColor(Roost.TEXT)
-            setHintTextColor(Roost.MUTED)
-        }
-        val waUrl = EditText(this).apply {
-            hint = getString(R.string.webapp_url_hint)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            setTextColor(Roost.TEXT)
-            setHintTextColor(Roost.MUTED)
-        }
-        col.addView(waName)
-        col.addView(waUrl)
-        col.addView(Button(this).apply {
-            text = getString(R.string.webapp_add)
-            setOnClickListener {
-                val url = normalizeUrl(waUrl.text.toString())
-                if (url.isNotEmpty()) {
-                    Prefs.addWebApp(this@SettingsActivity, waName.text.toString().trim(), url)
-                    recreate()
-                }
-            }
-        })
-
-        // --- Hidden items (restore) ---
-        val hidden = Prefs.hiddenItems(this)
-        if (hidden.isNotEmpty()) {
-            col.addView(header(getString(R.string.settings_hidden)))
-            for (key in hidden) {
-                col.addView(LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, dp(6f), 0, dp(6f))
-                    addView(TextView(this@SettingsActivity).apply {
-                        text = hiddenLabel(key)
-                        setTextColor(Roost.MUTED)
-                        textSize = 14f
-                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                    })
-                    addView(Button(this@SettingsActivity).apply {
-                        text = getString(R.string.tile_restore)
-                        setOnClickListener {
-                            Prefs.setHidden(this@SettingsActivity, key, false)
-                            recreate()
-                        }
-                    })
-                })
-            }
-        }
-
-        // --- VPN (WireGuard) ---
-        col.addView(header(getString(R.string.settings_wireguard)))
-        val wgEdit = EditText(this).apply {
-            setText(Prefs.wireguardTunnel(this@SettingsActivity))
-            hint = getString(R.string.wg_tunnel_hint)
-            inputType = InputType.TYPE_CLASS_TEXT
-            setTextColor(Roost.TEXT)
-            setHintTextColor(Roost.MUTED)
-        }
-        col.addView(wgEdit)
-        col.addView(Button(this).apply {
-            text = getString(R.string.settings_pkg_save)
-            setOnClickListener {
-                Prefs.setWireguardTunnel(this@SettingsActivity, wgEdit.text.toString().trim())
-                Toast.makeText(this@SettingsActivity, R.string.saved, Toast.LENGTH_SHORT).show()
-            }
-        })
-        col.addView(TextView(this).apply {
-            text = getString(R.string.wg_note)
-            setTextColor(Roost.MUTED)
-            textSize = 12f
-            setPadding(0, dp(6f), 0, 0)
-        })
-
-        col.addView(TextView(this).apply {
-            text = getString(R.string.open_android_settings)
-            setTextColor(accent)
-            textSize = 15f
-            setPadding(0, dp(28f), 0, 0)
-            setOnClickListener { startActivity(Intent(Settings.ACTION_SETTINGS)) }
-        })
-
-        setContentView(ScrollView(this).apply {
-            background = Roost.dockBackground(this@SettingsActivity)
-            addView(col)
-        })
+        // Open Android system settings
+        body.addView(openAndroidRow())
     }
 
-    private fun accentSwatches(): View {
-        val row = LinearLayout(this).apply {
+    private fun deviceStrip(): View {
+        val strip = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(4f), 0, dp(4f))
+            gravity = Gravity.CENTER_VERTICAL
+            background = Roost.rounded(Roost.soft(accent), dp(18f).toFloat(), Roost.soft(accent), dp(1f))
+            setPadding(dp(16f), dp(14f), dp(16f), dp(14f))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         }
-        for ((name, color) in Roost.ACCENTS) {
-            val selected = color == accent
-            val swatch = TextView(this).apply {
-                text = name
-                textSize = 12f
-                gravity = Gravity.CENTER
-                setTextColor(if (selected) Roost.DOCK else Roost.TEXT)
-                background = Roost.rounded(
-                    if (selected) color else Roost.TILE, dp(20f).toFloat(),
-                    if (selected) color else Roost.HAIRLINE, dp(if (selected) 2f else 1f)
+        strip.addView(FrameLayout(this).apply {
+            background = Roost.rounded(Roost.TILE, dp(14f).toFloat(), Roost.soft(accent), dp(1f))
+            layoutParams = LinearLayout.LayoutParams(dp(44f), dp(40f)).apply { rightMargin = dp(13f) }
+            addView(ImageView(this@SettingsActivity).apply {
+                setImageResource(R.drawable.ic_cat_agent)
+                setColorFilter(accent)
+                val p = dp(10f); setPadding(p, p, p, p)
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
                 )
-                setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
-                setOnClickListener {
-                    Prefs.setAccent(this@SettingsActivity, color)
-                    recreate()
-                }
-            }
-            row.addView(swatch, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { rightMargin = dp(8f) })
-        }
-        return row
+            })
+        })
+        val agentName = Prefs.agentName(this).trim().ifEmpty { "This" }
+        val stack = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        stack.addView(TextView(this).apply {
+            text = "$agentName's device"
+            setTextColor(Roost.TEXT)
+            textSize = 15f
+            typeface = Roost.medium()
+        })
+        stack.addView(TextView(this).apply {
+            text = "Roost · ${packageName}"
+            setTextColor(SUBTLE)
+            textSize = 10.5f
+            typeface = Typeface.MONOSPACE
+            setPadding(0, dp(2f), 0, 0)
+        })
+        strip.addView(stack)
+        return strip
     }
 
-    private fun installedLaunchable(): List<Pair<String, String>> {
-        val pm = packageManager
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        return pm.queryIntentActivities(intent, 0)
-            .mapNotNull {
-                val pkg = it.activityInfo.packageName
-                if (pkg == packageName) null else pkg to it.loadLabel(pm).toString()
-            }
-            .distinctBy { it.first }
-            .sortedBy { it.second.lowercase() }
+    private fun openAndroidRow(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(15f), dp(15f), dp(15f), dp(15f))
+        isClickable = true
+        setOnClickListener { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+        addView(ImageView(this@SettingsActivity).apply {
+            setImageResource(R.drawable.ic_external)
+            setColorFilter(Roost.MUTED)
+            layoutParams = LinearLayout.LayoutParams(dp(18f), dp(18f)).apply { rightMargin = dp(10f) }
+        })
+        addView(TextView(this@SettingsActivity).apply {
+            text = getString(R.string.open_android_settings_full)
+            setTextColor(Roost.MUTED)
+            textSize = 13.5f
+        })
     }
 
-    private fun title(t: String) = TextView(this).apply {
-        text = t
-        setTextColor(Roost.TEXT)
-        textSize = 22f
-        typeface = Roost.medium()
-        setPadding(0, 0, 0, dp(6f))
-    }
+    private fun open(cls: Class<*>) = startActivity(Intent(this, cls))
 
-    private fun header(t: String) = TextView(this).apply {
-        text = t.uppercase()
-        setTextColor(accent)
-        textSize = 12f
-        letterSpacing = 0.08f
-        typeface = Roost.medium()
-        setPadding(0, dp(24f), 0, dp(8f))
-    }
+    private fun appLabel(pkg: String): String? = try {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+    } catch (e: Exception) { null }
 
-    /** Checked=accent, unchecked=muted — so controls follow the Roost accent, not the system one. */
-    private fun checkedCsl(): ColorStateList {
-        val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
-        return ColorStateList(states, intArrayOf(accent, Roost.MUTED))
-    }
-
-    private fun radio(t: String) = RadioButton(this).apply {
-        text = t
-        setTextColor(Roost.TEXT)
-        buttonTintList = checkedCsl()
-        id = View.generateViewId()
-    }
-
-    private fun switchRow(t: String, initial: Boolean, onChange: (Boolean) -> Unit) = Switch(this).apply {
-        text = t
-        isChecked = initial
-        setTextColor(Roost.TEXT)
-        thumbTintList = checkedCsl()
-        trackTintList = ColorStateList(
-            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-            intArrayOf(Roost.soft(accent), Roost.withAlpha(Roost.MUTED, 0x55))
-        )
-        setPadding(0, dp(8f), 0, dp(8f))
-        setOnCheckedChangeListener { _, c -> onChange(c) }
-    }
-
-    private fun hiddenLabel(key: String): String = when {
-        key.startsWith("app:") -> {
-            val pkg = key.removePrefix("app:")
-            try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }
-            catch (e: Exception) { pkg }
-        }
-        key.startsWith("web:") -> key.removePrefix("web:")
-        else -> key.substringAfterLast(":").ifBlank { key }
-    }
-
-    /** Default a bare host to https:// so web apps "just work" from a pasted address. */
-    private fun normalizeUrl(raw: String): String {
-        val u = raw.trim()
-        return when {
-            u.isEmpty() -> ""
-            u.startsWith("http://") || u.startsWith("https://") -> u
-            else -> "https://$u"
-        }
+    override fun onResume() {
+        super.onResume()
+        // Category subtitles reflect live state (mode, agent, tunnel) — repaint on return.
+        rebuild()
     }
 }
