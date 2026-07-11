@@ -29,6 +29,10 @@ Read these before making architectural changes. Current set:
   collection keyed by id; firing shows an on-tile `idle → pending → success/queued → error → timeout`
   state machine (fixed semantic ramp — Sage/Amber/Clay, not the accent), replacing the Toast. HASS scenes
   become an authoring path. HMAC uses platform `javax.crypto.Mac`. Governs SPEC-0002.
+- **ADR-0005 — Settings navigation IA.** Monolithic `SettingsActivity` → a landing + per-category detail
+  Activities (Home & behavior / Agent / Appearance / Apps-tiles-content / Network), framework-only
+  drill-down via `startActivity` + the system back stack (no nav component); featured agent + Favorites
+  become app pickers, not raw package fields. Realizes `docs/SETTINGS-DESIGN-BRIEF.md`.
 - **SPEC-0001 — Action Buttons** (`docs/openspec/action-buttons/`).
 - **SPEC-0002 — HTTP Actions** (`docs/openspec/http-actions/`).
 
