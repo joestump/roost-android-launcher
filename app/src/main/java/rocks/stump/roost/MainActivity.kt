@@ -10,15 +10,16 @@ import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.TrafficStats
 import android.net.Uri
 import android.os.BatteryManager
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
-import android.widget.GridLayout
-import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
@@ -46,6 +47,25 @@ class MainActivity : Activity() {
     private var rxRate = 0L
     private var txRate = 0L
 
+    // Independent 1s traffic-rate poll so the VPN chip always shows live up/down speeds,
+    // regardless of whether the "Bandwidth heartbeat" graph is enabled.
+    private val rateHandler = Handler(Looper.getMainLooper())
+    private var ratePollActive = false
+    private var lastRxBytes = 0L
+    private var lastTxBytes = 0L
+    private val rateTick = object : Runnable {
+        override fun run() {
+            val rx = TrafficStats.getTotalRxBytes()
+            val tx = TrafficStats.getTotalTxBytes()
+            if (lastRxBytes > 0L && rx >= lastRxBytes) rxRate = rx - lastRxBytes
+            if (lastTxBytes > 0L && tx >= lastTxBytes) txRate = tx - lastTxBytes
+            lastRxBytes = rx
+            lastTxBytes = tx
+            refreshVpnChip()
+            rateHandler.postDelayed(this, 1000L)
+        }
+    }
+
     private var batteryRegistered = false
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) = refreshStatus()
@@ -70,11 +90,26 @@ class MainActivity : Activity() {
 
         render()
         registerBattery()
+        startRatePoll()
     }
 
     override fun onPause() {
         super.onPause()
         unregisterBattery()
+        stopRatePoll()
+    }
+
+    private fun startRatePoll() {
+        if (ratePollActive) return          // guard against double-starting
+        ratePollActive = true
+        lastRxBytes = TrafficStats.getTotalRxBytes()
+        lastTxBytes = TrafficStats.getTotalTxBytes()
+        rateHandler.postDelayed(rateTick, 1000L)
+    }
+
+    private fun stopRatePoll() {
+        rateHandler.removeCallbacks(rateTick)
+        ratePollActive = false
     }
 
     override fun onStop() {
@@ -103,7 +138,7 @@ class MainActivity : Activity() {
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(22f), dp(46f), dp(22f), dp(28f))
+            setPadding(dp(14f), dp(46f), dp(14f), dp(28f))
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
@@ -259,20 +294,23 @@ class MainActivity : Activity() {
         }
     }
 
+    // Rows of 3 using a vertical LinearLayout of horizontal rows with WEIGHTED spacers between
+    // tiles (space-between) so column 1 hugs the left content edge and column 3 hugs the right.
+    // GridLayout weight sizing is unreliable, so we lay out rows + spacers by hand.
     private fun utilityGrid(): View {
         val columns = 3
-        val grid = GridLayout(this).apply { columnCount = columns }
-        val cell = (resources.displayMetrics.widthPixels - dp(44f)) / columns
+        val tileWidth = dp(78f)
         val agentPkg = Prefs.agentPkg(this)
+        val tiles = mutableListOf<View>()
 
         // Featured agent — same tile size/style as the rest, marked with an accent ring.
         if (!Prefs.isHidden(this, "agent")) {
             val at = tile(
                 appLabel(agentPkg) ?: "Agent",
-                overrideIcon("agent") ?: appIcon(agentPkg), cell, ringed = true
+                overrideIcon("agent") ?: appIcon(agentPkg), tileWidth, ringed = true
             ) { launchAgent() }
             tileMenu(at, "agent") { uninstallApp(agentPkg) }
-            grid.addView(at)
+            tiles.add(at)
         }
 
         // Installed favorites (minus the agent + hidden), alphabetical.
@@ -281,9 +319,9 @@ class MainActivity : Activity() {
             .mapNotNull { pkg -> appLabel(pkg)?.let { pkg to it } }
             .sortedBy { it.second.lowercase() }
             .forEach { (pkg, label) ->
-                val t = tile(label, overrideIcon("app:$pkg") ?: appIcon(pkg), cell) { launchPackage(pkg) }
+                val t = tile(label, overrideIcon("app:$pkg") ?: appIcon(pkg), tileWidth) { launchPackage(pkg) }
                 tileMenu(t, "app:$pkg") { uninstallApp(pkg) }
-                grid.addView(t)
+                tiles.add(t)
             }
 
         // Web apps — fullscreen WebView tiles.
@@ -291,28 +329,56 @@ class MainActivity : Activity() {
             .filter { !Prefs.isHidden(this, "web:${it.url}") }
             .forEach { wa ->
                 val ov = overrideIcon("web:${wa.url}")
-                val t = tile(wa.name, ov ?: webIcon(), cell, iconTint = if (ov != null) null else WEB_ICON_TINT) {
+                val t = tile(wa.name, ov ?: webIcon(), tileWidth, iconTint = if (ov != null) null else WEB_ICON_TINT) {
                     openWebApp(wa.url)
                 }
                 tileMenu(t, "web:${wa.url}") { Prefs.removeWebApp(this, wa.url) }
-                grid.addView(t)
+                tiles.add(t)
             }
 
         // Store — get more apps.
-        grid.addView(tile(getString(R.string.store), null, cell, isAdd = true) {
+        tiles.add(tile(getString(R.string.store), null, tileWidth, isAdd = true) {
             openPlayStore()
         })
 
-        grid.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-        return grid
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        tiles.chunked(columns).forEachIndexed { rowIndex, rowTiles ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = if (rowIndex == 0) 0 else dp(6f) }
+            }
+            for (col in 0 until columns) {
+                // Weighted spacer BETWEEN columns → space-between across the content width.
+                if (col > 0) row.addView(View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+                })
+                val t = rowTiles.getOrNull(col)
+                if (t != null) {
+                    row.addView(t)
+                } else {
+                    // Empty placeholder equal to the tile width keeps a lone/partial row's tiles
+                    // pinned to the same column x-positions as the full rows above.
+                    row.addView(View(this).apply {
+                        layoutParams = LinearLayout.LayoutParams(tileWidth, 1)
+                    })
+                }
+            }
+            container.addView(row)
+        }
+        return container
     }
 
     private fun tile(
         label: String,
         icon: Drawable?,
-        cellPx: Int,
+        widthPx: Int,
         isAdd: Boolean = false,
         ringed: Boolean = false,
         iconTint: Int? = null,
@@ -333,18 +399,18 @@ class MainActivity : Activity() {
         }
         val surface = FrameLayout(this).apply {
             background = Roost.rounded(Roost.TILE, dp(16f).toFloat(), borderColor, dp(if (ringed) 2f else 1f))
-            val s = dp(58f)
+            val s = dp(66f)
             layoutParams = LinearLayout.LayoutParams(s, s)
         }
         surface.addView(ImageView(this).apply {
             if (isAdd) {
                 setImageResource(R.drawable.ic_plus)
                 setColorFilter(accent)
-                val p = dp(16f); setPadding(p, p, p, p)
+                val p = dp(11f); setPadding(p, p, p, p)
             } else {
                 setImageDrawable(icon)
                 iconTint?.let { setColorFilter(it) }
-                val p = dp(13f); setPadding(p, p, p, p)
+                val p = dp(9f); setPadding(p, p, p, p)
             }
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
@@ -361,11 +427,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(7f), 0, 0)
         })
 
-        cell.layoutParams = GridLayout.LayoutParams().apply {
-            width = cellPx
-            height = GridLayout.LayoutParams.WRAP_CONTENT
-            setGravity(Gravity.CENTER)
-        }
+        cell.layoutParams = LinearLayout.LayoutParams(widthPx, LinearLayout.LayoutParams.WRAP_CONTENT)
         return cell
     }
 
@@ -413,7 +475,8 @@ class MainActivity : Activity() {
     private fun applyVpnChip(chip: TextView) {
         val up = vpnUp()
         val base = getString(if (up) R.string.vpn_up else R.string.vpn_off)
-        chip.text = if (up && (rxRate > 0 || txRate > 0))
+        // When the VPN is up, ALWAYS show the up/down rates (even 0), independent of the graph toggle.
+        chip.text = if (up)
             "$base  ↓${formatRate(rxRate)} ↑${formatRate(txRate)}" else base
         chip.setTextColor(if (up) accent else Roost.MUTED)
         chip.background = Roost.rounded(
@@ -516,37 +579,34 @@ class MainActivity : Activity() {
     private fun actionRow(): View? {
         val buttons = Prefs.actionButtons(this).filter { !Prefs.isHidden(this, it.key) }
         if (buttons.isEmpty()) return null
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(2f), 0, dp(2f), 0)
-        }
-        buttons.forEach { b ->
-            val pill = actionPill(b)
-            tileMenu(pill, b.key) { Prefs.setActionEnabled(this, b, false) }
-            row.addView(pill)
-        }
-        return HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
+        // Wrapping flow (framework-only, ADR-0001) — pills fill left-to-right and wrap to a new
+        // line, left-aligned to the same left content margin as the utility grid.
+        val flow = FlowLayout(this, hGap = dp(10f), vGap = dp(10f)).apply {
             setPadding(0, dp(18f), 0, 0)
-            addView(row)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
+        buttons.forEach { b ->
+            val pill = actionPill(b)
+            tileMenu(pill, b.key) { Prefs.setActionEnabled(this, b, false) }
+            flow.addView(pill)
+        }
+        return flow
     }
 
     private fun actionPill(b: ActionButton): View {
         val pill = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Roost.rounded(Roost.TILE, dp(20f).toFloat(), Roost.HAIRLINE, dp(1f))
+            // Action pills follow the theme accent (soft-accent fill + accent hairline).
+            background = Roost.rounded(Roost.soft(accent), dp(20f).toFloat(), accent, dp(1f))
             setPadding(dp(12f), dp(9f), dp(14f), dp(9f))
             isClickable = true
             setOnClickListener { invokeAction(b) }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { rightMargin = dp(10f) }
+            )
         }
         val ov = overrideIcon(b.key)
         pill.addView(ImageView(this).apply {
@@ -559,7 +619,8 @@ class MainActivity : Activity() {
             text = b.title.substringAfterLast(" · ")
             setTextColor(Roost.TEXT)
             textSize = 13f
-            maxLines = 1
+            // Do not truncate — allow the label to wrap to a second line.
+            maxLines = 2
             setPadding(dp(8f), 0, 0, 0)
         })
         return pill

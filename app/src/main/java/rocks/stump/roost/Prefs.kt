@@ -24,9 +24,11 @@ object Prefs {
     /** Seeded favorites. Not-yet-installed packages simply don't render until they exist. */
     val DEFAULT_FAVORITES: Set<String> = linkedSetOf(
         DEFAULT_AGENT_PKG,
-        "com.wireguard.android",   // WireGuard
-        "proton.android.pass",     // Proton Pass
-        "ch.protonmail.android"    // Proton Mail
+        "com.wireguard.android",                    // WireGuard
+        "proton.android.pass",                      // Proton Pass
+        "ch.protonmail.android",                    // Proton Mail
+        "com.nutomic.syncthingandroid",             // Syncthing (official / F-Droid)
+        "com.github.catfriend1.syncthingandroid"    // Syncthing-Fork (Play)
     )
 
     private const val K_MODE = "mode"
