@@ -10,7 +10,9 @@ bundled fonts. Deliberately hackable. It's **vendor-neutral**: the featured tile
 agent app's own icon at runtime, so Roost's identity (a little robot that lives on the phone) stands on
 its own.
 
-![Roost home screen](docs/screenshots/home.png)
+<p align="center">
+  <img src="docs/screenshots/home.png" alt="Roost home screen" width="300">
+</p>
 
 ## Two modes (toggle in Settings)
 
