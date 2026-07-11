@@ -101,20 +101,31 @@ class MainActivity : Activity() {
         // Featured Claude tile.
         buildTile(Prefs.claudePkg(this), big = true) { launchClaude() }?.let { col.addView(it) }
 
-        // Grid of the other favorites that are actually installed.
+        // Grid of the other favorites that are actually installed. GridLayout weight-based
+        // sizing collapses children to zero width here, so we compute a fixed cell width from
+        // the display width and lay the tiles out in fixed thirds.
+        val columns = 3
         val grid = GridLayout(this).apply {
-            columnCount = 3
+            columnCount = columns
             setPadding(0, dp(24), 0, 0)
         }
+        val cellWidth = (resources.displayMetrics.widthPixels - dp(40)) / columns
         val claudePkg = Prefs.claudePkg(this)
         Prefs.favorites(this)
             .filter { it != claudePkg }
             .mapNotNull { pkg -> appLabel(pkg)?.let { pkg to it } }
             .sortedBy { it.second.lowercase() }
             .forEach { (pkg, _) ->
-                buildTile(pkg, big = false) { launchPackage(pkg) }?.let { grid.addView(it) }
+                buildTile(pkg, big = false, cellWidthPx = cellWidth) { launchPackage(pkg) }
+                    ?.let { grid.addView(it) }
             }
-        col.addView(grid)
+        col.addView(
+            grid,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         // Escape hatch to the app picker / settings.
         col.addView(TextView(this).apply {
@@ -134,7 +145,7 @@ class MainActivity : Activity() {
 
     // --- Tile construction -----------------------------------------------------------------
 
-    private fun buildTile(pkg: String, big: Boolean, onClick: () -> Unit): View? {
+    private fun buildTile(pkg: String, big: Boolean, cellWidthPx: Int = 0, onClick: () -> Unit): View? {
         // For the Claude package we always show a tile (even pre-install) so the device is usable
         // the moment Claude finishes installing; other packages only render once installed.
         val label = appLabel(pkg) ?: if (pkg == Prefs.claudePkg(this)) "Claude" else return null
@@ -165,8 +176,8 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         } else {
             GridLayout.LayoutParams().apply {
-                width = 0
-                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                width = cellWidthPx
+                height = GridLayout.LayoutParams.WRAP_CONTENT
                 setGravity(Gravity.CENTER)
             }
         }
