@@ -40,7 +40,7 @@ const config: Config = {
       {
         hashed: true,
         indexBlog: false,
-        docsRouteBasePath: '/',
+        docsRouteBasePath: '/docs',
       },
     ],
   ],
@@ -57,7 +57,7 @@ const config: Config = {
         docs: {
           path: 'docs',
           sidebarPath: './sidebars.ts',
-          routeBasePath: '/',
+          routeBasePath: '/docs',
           editUrl: `${GITEA_URL}/_edit/main/docs-site/`,
         },
         blog: false,
