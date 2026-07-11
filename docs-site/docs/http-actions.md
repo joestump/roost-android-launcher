@@ -104,6 +104,29 @@ state machine as everything else. The Home Assistant **scene picker survives as 
 pre-fills the builder from your account and scenes. And any Home Assistant scene buttons you'd already
 enabled **keep rendering and firing unchanged** — nothing to migrate by hand.
 
+## Density
+
+The Actions zone comes in three display **densities**, so a shelf of many actions and a two-tile hero
+dock can each look right. Switch between them inline from a small segmented control **right in the ACTIONS
+header** — three icon chips (slim / regular / rich) beside the **+** that opens the builder — or set the
+default in [**Settings → Appearance**](./settings.md) ("Action density", default **Regular**). All three
+share the same [on-tile state machine](#the-on-tile-state-machine) and the fixed Sage/Amber/Clay ramp —
+only the layout changes.
+
+<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start">
+  <img src="/roost-android-launcher/img/density-slim.png" alt="Slim density — a compact list of small disc + label cards with a terse right-aligned status, plus the ACTIONS-header density switcher" width="220" />
+  <img src="/roost-android-launcher/img/density-regular.png" alt="Regular density — a card per action with disc, label, and a full status line under it" width="220" />
+  <img src="/roost-android-launcher/img/density-rich.png" alt="Rich density — a two-column card grid with a big disc, label, a METHOD · host line, and the status" width="220" />
+</div>
+
+- **Slim** — a dense list of compact cards: a small disc + label with a terse right-aligned status
+  (`ready` / `firing…` / `200 OK` / `502`). The most actions in the least height — best for a shelf with
+  many.
+- **Regular** (the default) — a card per action: disc + label + a full status line beneath it, plus a
+  `task` tag on durable-task actions. The balanced middle — best for three to six actions.
+- **Rich** — a two-column card grid: a big disc, label, a `METHOD · host` line for HTTP actions, and the
+  status. Legible across a dim room — best for two to four hero actions on a docked idle face.
+
 ## Framework-only, of course
 
 No libraries were added for any of this. The animated disc is a `Canvas` view on a `Handler` tick;

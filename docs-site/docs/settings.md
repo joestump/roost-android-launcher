@@ -53,10 +53,14 @@ surface, no package strings anywhere.
 
 Under **Apps, tiles & content → Action buttons** is where [HTTP action tiles](./http-actions.md) are managed:
 
-<img src="/roost-android-launcher/img/settings-actions.png" alt="The Action buttons screen — an HTTP actions section with New action, per-action enabled toggles, and a Home Assistant account form" width="320" />
+<img src="/roost-android-launcher/img/settings-actions.png" alt="The Action buttons screen — each HTTP action listed with its chosen icon and a drag handle, per-action enabled toggles, New action, and a Home Assistant account form" width="320" />
 
 - An **HTTP actions** section with a **New action** entry (into the builder / endpoints picker) and a
   per-action **enabled** toggle.
+- **Per-action icons** — each action shows the **icon you chose** in the builder (a Jellyfin logo, a Home
+  Assistant mark, whatever fits), not a generic glyph, so the list reads at a glance.
+- **Drag to reorder** — long-press a row's **drag handle** to reorder the enabled buttons; that order is
+  the order they appear in the home Actions zone.
 - The **Home Assistant** account form, now just one authoring path that produces an HTTP action.
 
 The deep configuration — the HTTP-action builder, the endpoints picker, the icon picker — stays bespoke; the
