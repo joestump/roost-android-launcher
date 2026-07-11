@@ -359,7 +359,7 @@ class MainActivity : Activity() {
     // tiles (space-between) so column 1 hugs the left content edge and column 3 hugs the right.
     // GridLayout weight sizing is unreliable, so we lay out rows + spacers by hand.
     private fun utilityGrid(): View {
-        val columns = 3
+        val columns = 4
         val tileWidth = dp(78f)
         val agentPkg = Prefs.agentPkg(this)
         val tiles = mutableListOf<View>()
@@ -495,13 +495,23 @@ class MainActivity : Activity() {
         return cell
     }
 
-    private fun appsSettingsLink(topPx: Int): TextView = TextView(this).apply {
-        text = getString(R.string.apps_and_settings)
-        setTextColor(Roost.MUTED)
-        textSize = 14f
+    // "Apps & Settings" — a gear glyph + label, centered, per the design (was text-only).
+    private fun appsSettingsLink(topPx: Int): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER
         setPadding(0, topPx, 0, 0)
+        isClickable = true
         setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
+        addView(ImageView(this@MainActivity).apply {
+            setImageResource(R.drawable.ic_settings)
+            setColorFilter(Roost.MUTED)
+            layoutParams = LinearLayout.LayoutParams(dp(16f), dp(16f)).apply { rightMargin = dp(8f) }
+        })
+        addView(TextView(this@MainActivity).apply {
+            text = getString(R.string.apps_and_settings)
+            setTextColor(Roost.MUTED)
+            textSize = 14f
+        })
     }
 
     private fun spacer(heightPx: Int): View = View(this).apply {
