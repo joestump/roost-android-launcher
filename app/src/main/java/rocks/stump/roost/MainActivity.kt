@@ -149,7 +149,7 @@ class MainActivity : Activity() {
         vpnChip()?.let { col.addView(it) }
         col.addView(spacer(dp(24f)))
         col.addView(utilityGrid())
-        actionRow()?.let { col.addView(it) }
+        actionsZone()?.let { col.addView(it) }
         col.addView(weightedSpacer())
         col.addView(appsSettingsLink(dp(16f)))
 
@@ -573,86 +573,118 @@ class MainActivity : Activity() {
         return IconStore.drawableFor(this, path)
     }
 
-    // --- Action buttons (pluggable — see SPEC-0001) -----------------------------------------
+    // --- Actions zone (pluggable — SPEC-0001 / SPEC-0002) -----------------------------------
 
-    // Governing: ADR-0002 (pluggable action-button providers), SPEC-0001 REQ "Home-screen rendering"
-    private fun actionRow(): View? {
+    // A dedicated "Actions" band below the app grid: a mono uppercase header + "+ new" link, then a
+    // vertical column of ActionTileView tiles (one per enabled ActionButton). HTTP and HASS_SCENE
+    // buttons fire through the on-tile state machine; SHORTCUT buttons launch on tap. No actions → no
+    // zone (the whole band is null).
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Actions zone placement"
+    private fun actionsZone(): View? {
         val buttons = Prefs.actionButtons(this).filter { !Prefs.isHidden(this, it.key) }
         if (buttons.isEmpty()) return null
-        // Wrapping flow (framework-only, ADR-0001) — pills fill left-to-right and wrap to a new
-        // line, left-aligned to the same left content margin as the utility grid.
-        val flow = FlowLayout(this, hGap = dp(10f), vGap = dp(10f)).apply {
-            setPadding(0, dp(18f), 0, 0)
+
+        val zone = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(24f), 0, 0)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
-        buttons.forEach { b ->
-            val pill = actionPill(b)
-            tileMenu(pill, b.key) { Prefs.setActionEnabled(this, b, false) }
-            flow.addView(pill)
-        }
-        return flow
-    }
 
-    private fun actionPill(b: ActionButton): View {
-        val pill = LinearLayout(this).apply {
+        val head = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            // Action pills follow the theme accent (soft-accent fill + accent hairline).
-            background = Roost.rounded(Roost.soft(accent), dp(20f).toFloat(), accent, dp(1f))
-            setPadding(dp(12f), dp(9f), dp(14f), dp(9f))
-            isClickable = true
-            setOnClickListener { invokeAction(b) }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            setPadding(dp(2f), 0, dp(2f), dp(12f))
         }
-        val ov = overrideIcon(b.key)
-        pill.addView(ImageView(this).apply {
-            setImageDrawable(ov ?: actionIcon(b))
-            if (ov == null && b.kind == ActionKind.HASS_SCENE) setColorFilter(accent)
-            val s = dp(20f)
-            layoutParams = LinearLayout.LayoutParams(s, s)
+        head.addView(TextView(this).apply {
+            text = "ACTIONS"
+            setTextColor(0xFF6E665B.toInt())
+            textSize = 10f
+            letterSpacing = 0.15f
+            typeface = Typeface.MONOSPACE
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        pill.addView(TextView(this).apply {
-            text = b.title.substringAfterLast(" · ")
-            setTextColor(Roost.TEXT)
-            textSize = 13f
-            // Do not truncate — allow the label to wrap to a second line.
-            maxLines = 2
-            setPadding(dp(8f), 0, 0, 0)
+        head.addView(TextView(this).apply {
+            text = "+ new"
+            setTextColor(accent)
+            textSize = 10f
+            typeface = Typeface.MONOSPACE
+            isClickable = true
+            setOnClickListener { startActivity(Intent(this@MainActivity, EndpointsActivity::class.java)) }
         })
-        return pill
+        zone.addView(head)
+
+        buttons.forEach { b ->
+            val http = if (b.kind == ActionKind.HTTP) Prefs.httpAction(this, b.a) else null
+            val isTask = http != null && HttpActionClient.hostOf(http.url).contains("switchboard")
+            val host = http?.let { HttpActionClient.hostOf(it.url) } ?: ""
+            val tile = ActionTileView(this, accent).apply {
+                bind(
+                    title = b.title.substringAfterLast(" · "),
+                    idleIcon = overrideIcon(b.key) ?: actionIcon(b),
+                    isTask = isTask,
+                    host = host
+                )
+                onFire = { invokeAction(b, this) }
+            }
+            tileMenu(tile, b.key) { Prefs.setActionEnabled(this, b, false) }
+            zone.addView(tile, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10f) })
+        }
+        return zone
     }
 
+    // Governing: ADR-0002 (pluggable action-button providers), SPEC-0002 REQ "General HTTP-action definition"
     private fun actionIcon(b: ActionButton): Drawable? = when (b.kind) {
         ActionKind.SHORTCUT -> ShortcutProvider.icon(this, b.a, b.b) ?: appIcon(b.a)
         ActionKind.HASS_SCENE ->
             try { resources.getDrawable(R.drawable.ic_scene, theme)?.mutate() } catch (e: Exception) { null }
+        ActionKind.HTTP ->
+            try { resources.getDrawable(R.drawable.ic_scene, theme)?.mutate() } catch (e: Exception) { null }
     }
 
-    // Governing: ADR-0002 (pluggable action-button providers), SPEC-0001 REQ "Threading and error handling"
-    private fun invokeAction(b: ActionButton) {
+    // Drives the tapped tile's on-tile state machine instead of a Toast (ADR-0004). All network runs
+    // off-thread; results marshal back with runOnUiThread.
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Threading and error handling"
+    private fun invokeAction(b: ActionButton, tile: ActionTileView) {
+        if (tile.isPending()) return
         when (b.kind) {
             ActionKind.SHORTCUT ->
-                if (!ShortcutProvider.invoke(this, b.a, b.b)) {
-                    Toast.makeText(this, getString(R.string.action_failed, b.title), Toast.LENGTH_SHORT).show()
-                }
+                if (ShortcutProvider.invoke(this, b.a, b.b)) tile.flashSuccess()
+                else tile.showError("ERROR", "couldn't start shortcut")
+
             ActionKind.HASS_SCENE -> {
                 val acct = Prefs.hassAccounts(this).find { it.id == b.a }
-                if (acct == null) {
-                    Toast.makeText(this, getString(R.string.action_failed, b.title), Toast.LENGTH_SHORT).show()
-                } else {
-                    Thread {
-                        val ok = runCatching { Hass.activateScene(acct, b.b) }.isSuccess
-                        runOnUiThread {
-                            val msg = if (ok) "✓ ${b.title.substringAfterLast(" · ")}"
-                            else getString(R.string.action_failed, b.title.substringAfterLast(" · "))
-                            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                if (acct == null) { tile.showError("ERROR", "account missing"); return }
+                tile.showPending()
+                Thread {
+                    val ok = runCatching { Hass.activateScene(acct, b.b) }.isSuccess
+                    runOnUiThread { if (ok) tile.showSuccess(200) else tile.showError("ERROR", "scene failed") }
+                }.start()
+            }
+
+            ActionKind.HTTP -> {
+                val action = Prefs.httpAction(this, b.a)
+                if (action == null) { tile.showError("ERROR", "definition missing"); return }
+                val secret = Prefs.httpSecret(this, b.a)
+                val vars = HttpActionClient.defaultVars(this)
+                tile.showPending()
+                Thread {
+                    val res = HttpActionClient.fire(action, secret, vars)
+                    runOnUiThread {
+                        when {
+                            res.timeout -> tile.showTimeout()
+                            res.ok && (tile.isTask || res.code == 202) -> tile.showQueued(res.code)
+                            res.ok -> tile.showSuccess(res.code)
+                            else -> tile.showError(
+                                if (res.code > 0) res.code.toString() else "ERROR",
+                                res.reason.ifBlank { "request failed" }
+                            )
                         }
-                    }.start()
-                }
+                    }
+                }.start()
             }
         }
     }

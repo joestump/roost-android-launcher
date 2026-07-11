@@ -47,6 +47,8 @@ object Prefs {
     private const val K_ACTION_BUTTONS = "action_buttons"
     private const val K_HIDDEN = "hidden_items"
     private const val K_ICON_OVERRIDES = "icon_overrides"
+    private const val K_HTTP_ACTIONS = "http_actions"
+    private const val K_HTTP_SECRETS = "http_secrets"
 
     private fun sp(c: Context): SharedPreferences =
         c.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -146,6 +148,81 @@ object Prefs {
             )
         }
         sp(c).edit().putString(K_ACTION_BUTTONS, arr.toString()).apply()
+    }
+
+    // --- HTTP actions (generalized provider) ---
+    // A tolerant JSON collection keyed by id, mirroring hass_accounts: a malformed entry is skipped,
+    // never fatal, and there is no migration/seed. Secrets live in a parallel keyed store so they
+    // never travel inline with the definition.
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "General HTTP-action definition"
+
+    fun httpActions(c: Context): MutableList<HttpAction> {
+        val arr = JSONArray(sp(c).getString(K_HTTP_ACTIONS, "[]") ?: "[]")
+        val out = mutableListOf<HttpAction>()
+        for (i in 0 until arr.length()) {
+            val o = runCatching { arr.getJSONObject(i) }.getOrNull() ?: continue
+            val id = o.optString("id")
+            if (id.isBlank()) continue                                    // skip malformed
+            val auth = runCatching { HttpAuth.valueOf(o.optString("auth", "NONE")) }
+                .getOrDefault(HttpAuth.NONE)
+            val headers = mutableListOf<Pair<String, String>>()
+            val ha = o.optJSONArray("headers")
+            if (ha != null) {
+                for (j in 0 until ha.length()) {
+                    val h = runCatching { ha.getJSONObject(j) }.getOrNull() ?: continue
+                    val k = h.optString("k")
+                    if (k.isNotBlank()) headers.add(k to h.optString("v"))
+                }
+            }
+            out.add(
+                HttpAction(
+                    id, o.optString("method", "POST").ifBlank { "POST" },
+                    o.optString("url"), headers, auth, o.optString("body")
+                )
+            )
+        }
+        return out
+    }
+
+    fun setHttpActions(c: Context, actions: List<HttpAction>) {
+        val arr = JSONArray()
+        actions.forEach { a ->
+            val ha = JSONArray()
+            a.headers.forEach { (k, v) -> ha.put(JSONObject().put("k", k).put("v", v)) }
+            arr.put(
+                JSONObject().put("id", a.id).put("method", a.method).put("url", a.url)
+                    .put("auth", a.auth.name).put("body", a.body).put("headers", ha)
+            )
+        }
+        sp(c).edit().putString(K_HTTP_ACTIONS, arr.toString()).apply()
+    }
+
+    fun httpAction(c: Context, id: String): HttpAction? = httpActions(c).find { it.id == id }
+
+    /** Insert or replace [action] by id. */
+    fun setHttpAction(c: Context, action: HttpAction) {
+        val cur = httpActions(c).filterNot { it.id == action.id }.toMutableList()
+        cur.add(action)
+        setHttpActions(c, cur)
+    }
+
+    fun removeHttpAction(c: Context, id: String) {
+        setHttpActions(c, httpActions(c).filterNot { it.id == id })
+        setHttpSecret(c, id, null)
+        setActionButtons(c, actionButtons(c).filterNot { it.kind == ActionKind.HTTP && it.a == id })
+    }
+
+    // Secrets keyed by action id — entered masked, shown only as •••• last4, redacted from echoes.
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Secret handling"
+    fun httpSecret(c: Context, id: String): String {
+        val o = JSONObject(sp(c).getString(K_HTTP_SECRETS, "{}") ?: "{}")
+        return if (o.has(id)) o.optString(id) else ""
+    }
+
+    fun setHttpSecret(c: Context, id: String, value: String?) {
+        val o = JSONObject(sp(c).getString(K_HTTP_SECRETS, "{}") ?: "{}")
+        if (value.isNullOrEmpty()) o.remove(id) else o.put(id, value)
+        sp(c).edit().putString(K_HTTP_SECRETS, o.toString()).apply()
     }
 
     // --- Hidden items (long-press → Hide; recoverable) ---
