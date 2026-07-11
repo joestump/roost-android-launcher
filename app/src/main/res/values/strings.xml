@@ -4,8 +4,17 @@
 
     <string name="greeting_home">your agent is home</string>
     <string name="greeting_named">%1$s is home</string>
-    <string name="featured">Featured</string>
+    <string name="greeting_working">your agent is working</string>
+    <string name="greeting_working_named">%1$s is working</string>
+    <string name="featured">FEATURED</string>
     <string name="featured_subtitle">tap to open your agent</string>
+    <string name="featured_not_installed">your model\'s app · not installed</string>
+
+    <!-- Waking-up boot intro (framework-only, gated behind Prefs.bootIntro). -->
+    <string name="boot_line_mount">[ ok ] roost 1.0 · mounting ~/agent</string>
+    <string name="boot_line_tunnel">[ ok ] tunnel up · wg0</string>
+    <string name="boot_line_online">[ ok ] agent online</string>
+    <string name="boot_good_morning">good morning.</string>
     <string name="add">Add</string>
     <string name="store">Store</string>
     <string name="tile_hide">Hide</string>

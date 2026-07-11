@@ -15,6 +15,10 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -44,8 +48,15 @@ class MainActivity : Activity() {
     private var greetingLabel: TextView? = null
     private var statusLabel: TextView? = null
     private var vpnChipView: TextView? = null
+    private var mascotView: MascotView? = null
     private var rxRate = 0L
     private var txRate = 0L
+
+    // "Awake / working" presence: derived from live network throughput with a short linger, so the
+    // mascot brightens + the greeting flips to "working…" while the agent is actually pushing traffic,
+    // then settles back to "home" once it goes quiet. Purely presentational.
+    private var awake = false
+    private var lastActiveAt = 0L
 
     // Independent 1s traffic-rate poll so the VPN chip always shows live up/down speeds,
     // regardless of whether the "Bandwidth heartbeat" graph is enabled.
@@ -62,9 +73,13 @@ class MainActivity : Activity() {
             lastRxBytes = rx
             lastTxBytes = tx
             refreshVpnChip()
+            updateAwake()
             rateHandler.postDelayed(this, 1000L)
         }
     }
+
+    // Drives the "waking up" boot-log line reveals; cleared on pause so it never fires off-screen.
+    private val bootHandler = Handler(Looper.getMainLooper())
 
     private var batteryRegistered = false
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -85,6 +100,14 @@ class MainActivity : Activity() {
 
         if (Prefs.pendingBootLaunch(this)) {
             Prefs.setPendingBootLaunch(this, false)
+            // Optional "waking up" intro on curated boots (gated by a flag, off by default). It reveals
+            // the home itself when the sequence finishes, so it never blocks a normal launch.
+            if (Prefs.bootIntro(this) && Prefs.mode(this) == Prefs.MODE_CURATED) {
+                registerBattery()
+                startRatePoll()
+                renderWaking()
+                return
+            }
             if (launchAgent()) return
         }
 
@@ -97,6 +120,7 @@ class MainActivity : Activity() {
         super.onPause()
         unregisterBattery()
         stopRatePoll()
+        bootHandler.removeCallbacksAndMessages(null)
     }
 
     private fun startRatePoll() {
@@ -147,7 +171,11 @@ class MainActivity : Activity() {
         col.addView(greetingView())
         col.addView(statusView())
         vpnChip()?.let { col.addView(it) }
-        col.addView(spacer(dp(24f)))
+        featuredHero()?.let {
+            col.addView(spacer(dp(22f)))
+            col.addView(it)
+        }
+        col.addView(spacer(dp(20f)))
         col.addView(utilityGrid())
         actionsZone()?.let { col.addView(it) }
         col.addView(weightedSpacer())
@@ -226,11 +254,13 @@ class MainActivity : Activity() {
 
     private fun mascot(sizePx: Int): MascotView = MascotView(this).apply {
         accent = this@MainActivity.accent
+        awake = this@MainActivity.awake
         isClickable = true
         setOnClickListener { launchAgent() }
         layoutParams = LinearLayout.LayoutParams(sizePx, sizePx).apply {
             gravity = Gravity.CENTER_HORIZONTAL
         }
+        mascotView = this
     }
 
     private fun greetingView(): TextView = TextView(this).apply {
@@ -254,15 +284,40 @@ class MainActivity : Activity() {
 
     private fun greeting(): String {
         val name = Prefs.agentName(this).trim()
-        return if (name.isNotEmpty()) getString(R.string.greeting_named, name)
-        else getString(R.string.greeting_home)
+        return when {
+            awake && name.isNotEmpty() -> getString(R.string.greeting_working_named, name)
+            awake -> getString(R.string.greeting_working)
+            name.isNotEmpty() -> getString(R.string.greeting_named, name)
+            else -> getString(R.string.greeting_home)
+        }
     }
 
     private fun statusLine(): String {
         val (pct, charging) = battery()
         val who = Prefs.agentName(this).trim().ifEmpty { "roost" }
-        val word = if (charging) "docked & charging" else "on battery"
-        return if (pct >= 0) "$who · $word · $pct%" else "$who · $word"
+        // "awake · working…" takes precedence over the power state, matching the mockup.
+        val word = when {
+            awake -> "awake · working…"
+            charging -> "docked & charging"
+            else -> "on battery"
+        }
+        // While working the % is noise; keep the line focused on the "working…" state.
+        return if (!awake && pct >= 0) "$who · $word · $pct%" else "$who · $word"
+    }
+
+    /**
+     * Recompute the "awake" presence from the current traffic rate (with a short linger so it doesn't
+     * flicker), and push it to the mascot + greeting/status. Called each second by [rateTick].
+     */
+    private fun updateAwake() {
+        val now = SystemClock.uptimeMillis()
+        if (rxRate + txRate > AWAKE_THRESHOLD) lastActiveAt = now
+        val nowAwake = lastActiveAt != 0L && (now - lastActiveAt) < AWAKE_LINGER_MS
+        if (nowAwake != awake) {
+            awake = nowAwake
+            mascotView?.awake = awake
+            refreshStatus()
+        }
     }
 
     /** Returns (battery %, isOnPower). Reads the sticky ACTION_BATTERY_CHANGED intent. */
@@ -303,15 +358,8 @@ class MainActivity : Activity() {
         val agentPkg = Prefs.agentPkg(this)
         val tiles = mutableListOf<View>()
 
-        // Featured agent — same tile size/style as the rest, marked with an accent ring.
-        if (!Prefs.isHidden(this, "agent")) {
-            val at = tile(
-                appLabel(agentPkg) ?: "Agent",
-                overrideIcon("agent") ?: appIcon(agentPkg), tileWidth, ringed = true
-            ) { launchAgent() }
-            tileMenu(at, "agent") { uninstallApp(agentPkg) }
-            tiles.add(at)
-        }
+        // The featured agent is now the full-width hero card above the grid (see featuredHero()), so it
+        // is intentionally NOT rendered as a grid tile here — no double-listing.
 
         // Installed favorites (minus the agent + hidden), alphabetical.
         Prefs.favorites(this)
@@ -398,7 +446,17 @@ class MainActivity : Activity() {
             else -> Roost.HAIRLINE
         }
         val surface = FrameLayout(this).apply {
-            background = Roost.rounded(Roost.TILE, dp(16f).toFloat(), borderColor, dp(if (ringed) 2f else 1f))
+            // The "Add"/Store slot reads as a ghost: a faint fill + a dashed accent border, distinct
+            // from real app tiles (solid TILE fill + solid hairline), per the mockup.
+            background = if (isAdd) {
+                android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Roost.withAlpha(0xFFFFFFFF.toInt(), 0x08))
+                    cornerRadius = dp(16f).toFloat()
+                    setStroke(dp(1f), Roost.soft(accent), dp(3f).toFloat(), dp(3f).toFloat())
+                }
+            } else {
+                Roost.rounded(Roost.TILE, dp(16f).toFloat(), borderColor, dp(if (ringed) 2f else 1f))
+            }
             val s = dp(66f)
             layoutParams = LinearLayout.LayoutParams(s, s)
         }
@@ -449,6 +507,170 @@ class MainActivity : Activity() {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
     }
 
+    // --- Featured-agent hero card -----------------------------------------------------------
+    // A full-width horizontal card: a ~60dp rounded app icon (the featured app's real icon, or a
+    // dashed placeholder + starburst if it isn't installed), the app's display name + a mono subtitle,
+    // and a "FEATURED" pill. Tapping launches the agent. This replaces the old "first grid tile with an
+    // accent ring", so the agent shows exactly once (hero here, not in the grid).
+    // Returns null when the agent has been hidden via the long-press menu (Prefs.isHidden "agent"),
+    // mirroring the old grid tile's `if (!Prefs.isHidden(this, "agent"))` guard so Hide isn't a no-op.
+    private fun featuredHero(): View? {
+        if (Prefs.isHidden(this, "agent")) return null
+        val agentPkg = Prefs.agentPkg(this)
+        val installed = isInstalled(agentPkg)
+        val whiteFill = Roost.withAlpha(0xFFFFFFFF.toInt(), 0x0B)   // rgba(255,255,255,0.045)
+        val whiteBorder = Roost.withAlpha(0xFFFFFFFF.toInt(), 0x12) // rgba(255,255,255,0.07)
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Roost.rounded(whiteFill, dp(22f).toFloat(), whiteBorder, dp(1f))
+            setPadding(dp(15f), dp(15f), dp(15f), dp(15f))
+            isClickable = true
+            setOnClickListener { launchAgent() }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        // Icon box (60dp, radius 17).
+        val box = FrameLayout(this).apply {
+            val s = dp(60f)
+            layoutParams = LinearLayout.LayoutParams(s, s).apply { rightMargin = dp(15f) }
+        }
+        val override = overrideIcon("agent")
+        if (installed || override != null) {
+            box.background = Roost.rounded(Roost.TILE, dp(17f).toFloat(), Roost.HAIRLINE, dp(1f))
+            box.addView(ImageView(this).apply {
+                setImageDrawable(override ?: appIcon(agentPkg))
+                val p = dp(9f); setPadding(p, p, p, p)
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            })
+        } else {
+            // Not installed: dashed placeholder + accent starburst, per the mockup.
+            box.background = GradientDrawableCompatDashed(dp(17f).toFloat())
+            box.addView(ImageView(this).apply {
+                setImageResource(R.drawable.ic_agent_star)
+                setColorFilter(accent)
+                val p = dp(17f); setPadding(p, p, p, p)
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            })
+        }
+        card.addView(box)
+
+        // Name + mono subtitle (weighted so the pill hugs the right edge).
+        val mid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        mid.addView(TextView(this).apply {
+            text = appLabel(agentPkg) ?: "Agent"
+            setTextColor(Roost.TEXT)
+            textSize = 18f
+            typeface = Roost.medium()
+            maxLines = 1
+        })
+        mid.addView(TextView(this).apply {
+            text = if (installed) getString(R.string.featured_subtitle)
+            else getString(R.string.featured_not_installed)
+            setTextColor(0xFF8F8578.toInt())
+            textSize = 10.5f
+            typeface = Typeface.MONOSPACE
+            maxLines = 1
+            setPadding(0, dp(3f), 0, 0)
+        })
+        card.addView(mid)
+
+        // "FEATURED" pill — accent text + soft-accent border.
+        card.addView(TextView(this).apply {
+            text = getString(R.string.featured)
+            setTextColor(accent)
+            textSize = 9f
+            letterSpacing = 0.12f
+            typeface = Typeface.MONOSPACE
+            setPadding(dp(8f), dp(4f), dp(8f), dp(4f))
+            background = Roost.rounded(0, dp(20f).toFloat(), Roost.soft(accent), dp(1f))
+        })
+
+        // Preserve long-press affordances (change icon / hide) on the featured item.
+        tileMenu(card, "agent") { uninstallApp(agentPkg) }
+        return card
+    }
+
+    /** A rounded-rect with a dashed hairline stroke — the "no app yet" placeholder fill. */
+    @Suppress("FunctionName")
+    private fun GradientDrawableCompatDashed(radiusPx: Float): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            setColor(Roost.withAlpha(0xFFFFFFFF.toInt(), 0x08))
+            cornerRadius = radiusPx
+            setStroke(dp(1f), Roost.withAlpha(0xFFFFFFFF.toInt(), 0x28), dp(3f).toFloat(), dp(3f).toFloat())
+        }
+
+    // --- "Waking up" boot intro (framework-only; gated behind Prefs.bootIntro) --------------
+    // A brief boot sequence: the awake mascot + a monospace terminal boot log that fades in line by
+    // line, then "good morning.", then it reveals the curated home. Driven entirely by Handler-delayed
+    // reveals + ViewPropertyAnimator fades (no animation library). Reaching home on its own means this
+    // can never strand the launcher on the intro screen.
+    private fun renderWaking() {
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(30f), dp(30f), dp(30f), dp(40f))
+        }
+        col.addView(mascot(dp(150f)).apply { awake = true })
+        col.addView(spacer(dp(24f)))
+
+        val log = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(dp(240f), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        fun logLine(res: Int, big: Boolean): TextView = TextView(this).apply {
+            text = if (big) getString(res) else bootLine(getString(res))
+            setTextColor(if (big) Roost.TEXT else 0xFF8F8578.toInt())
+            textSize = if (big) 15f else 12f
+            typeface = if (big) Typeface.DEFAULT else Typeface.MONOSPACE
+            alpha = 0f
+            setPadding(0, if (big) dp(8f) else dp(3f), 0, dp(3f))
+        }
+        val l1 = logLine(R.string.boot_line_mount, false)
+        val l2 = logLine(R.string.boot_line_tunnel, false)
+        val l3 = logLine(R.string.boot_line_online, false)
+        val l4 = logLine(R.string.boot_good_morning, true)
+        listOf(l1, l2, l3, l4).forEach { log.addView(it) }
+        col.addView(log)
+
+        setContentView(FrameLayout(this).apply {
+            background = Roost.dockBackground(this@MainActivity)
+            addView(
+                col,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                ).apply { gravity = Gravity.CENTER }
+            )
+        })
+
+        fun reveal(v: View) { v.animate().alpha(1f).setDuration(400).start() }
+        bootHandler.postDelayed({ reveal(l1) }, 150)
+        bootHandler.postDelayed({ reveal(l2) }, 550)
+        bootHandler.postDelayed({ reveal(l3) }, 950)
+        bootHandler.postDelayed({ reveal(l4) }, 1450)
+        // Finally, hand off to the real curated home.
+        bootHandler.postDelayed({ renderHome() }, 2900)
+    }
+
+    /** Style a "[ ok ] …" boot line so the "[ ok ]" prefix is accent-colored. */
+    private fun bootLine(line: String): CharSequence {
+        val end = line.indexOf(']')
+        if (end < 0) return line
+        val sp = SpannableString(line)
+        sp.setSpan(ForegroundColorSpan(accent), 0, end + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return sp
+    }
+
     // --- VPN (WireGuard) --------------------------------------------------------------------
 
     /** A tappable "vpn up/off" pill, centered. Only shown when WireGuard is installed. */
@@ -476,12 +698,15 @@ class MainActivity : Activity() {
         val up = vpnUp()
         val base = getString(if (up) R.string.vpn_up else R.string.vpn_off)
         // When the VPN is up, ALWAYS show the up/down rates (even 0), independent of the graph toggle.
+        // Lead with a status dot ("● wg up …") like the mockup's green chip; the whole chip is Sage.
         chip.text = if (up)
-            "$base  ↓${formatRate(rxRate)} ↑${formatRate(txRate)}" else base
-        chip.setTextColor(if (up) accent else Roost.MUTED)
+            "● $base  ↓${formatRate(rxRate)} ↑${formatRate(txRate)}" else base
+        // "Up" uses the Sage semantic color (fill 10%, border 20%, text + dot Sage) per the mockup;
+        // "down"/off stays muted. Sage is a fixed color here, deliberately NOT the themeable accent.
+        chip.setTextColor(if (up) Roost.SAGE else Roost.MUTED)
         chip.background = Roost.rounded(
-            if (up) Roost.soft(accent) else Roost.TILE, dp(20f).toFloat(),
-            if (up) Roost.soft(accent) else Roost.HAIRLINE, dp(1f)
+            if (up) Roost.withAlpha(Roost.SAGE, 0x1A) else Roost.TILE, dp(20f).toFloat(),
+            if (up) Roost.withAlpha(Roost.SAGE, 0x33) else Roost.HAIRLINE, dp(1f)
         )
     }
 
@@ -724,5 +949,10 @@ class MainActivity : Activity() {
     companion object {
         private val WEB_ICON_TINT = 0xFFD6CDBF.toInt()
         private const val WIREGUARD_PKG = "com.wireguard.android"
+
+        // "Awake" presence tuning: >3 KB/s of combined traffic counts as activity; the mascot stays
+        // awake for ~6s after the last active tick so it reads as calm "working…", not a strobe.
+        private const val AWAKE_THRESHOLD = 3L * 1024L
+        private const val AWAKE_LINGER_MS = 6000L
     }
 }
