@@ -33,8 +33,14 @@ Read these before making architectural changes. Current set:
   Activities (Home & behavior / Agent / Appearance / Apps-tiles-content / Network), framework-only
   drill-down via `startActivity` + the system back stack (no nav component); featured agent + Favorites
   become app pickers, not raw package fields. Realizes `docs/SETTINGS-DESIGN-BRIEF.md`.
+- **ADR-0006 — Declarative action provisioning.** An agent creates HTTP actions by writing
+  `actions.d/*.json` into a Syncthing-shared folder the owner grants Roost (SAF persistable tree URI);
+  Roost reconciles them into `ActionKind.HTTP` actions on resume — declarative (upsert + remove-on-missing),
+  scoped to a tracked synced-id set so manual actions are never touched. Framework-only via
+  `DocumentsContract` + `ContentResolver` + `org.json`. Governs SPEC-0003.
 - **SPEC-0001 — Action Buttons** (`docs/openspec/action-buttons/`).
 - **SPEC-0002 — HTTP Actions** (`docs/openspec/http-actions/`).
+- **SPEC-0003 — Synced Actions** (`docs/openspec/synced-actions/`).
 
 When implementing code governed by an artifact, leave a governing comment:
 `// Governing: ADR-0002 (pluggable action-button providers), SPEC-0001 REQ "Requirement Name"`.
