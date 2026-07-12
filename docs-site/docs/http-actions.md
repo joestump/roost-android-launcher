@@ -114,19 +114,21 @@ default **Regular**) — it's home-wide, so apps, web apps, shortcuts, scenes, a
 together. All three share the same [on-tile state machine](#the-on-tile-state-machine) (on fire tiles) and
 the fixed Sage/Amber/Clay ramp — only the layout changes.
 
-Each tile also carries a **per-kind tagline** so it reads at a glance: a web tile shows its host, an HTTP
-tile `METHOD · host`, a shortcut "shortcut", an app just its name. The idle→firing status line appears only
-on **fire tiles** (HTTP actions and Home Assistant scenes); launch tiles (apps, web, shortcuts) never show
-"tap to fire".
+Each tile also carries a **per-kind subtitle** so it reads at a glance: a web tile shows its host, an HTTP
+tile `METHOD · host`, a shortcut "shortcut", an app its Play category ("Productivity", "Social &
+Communication"). The idle→firing status line appears only on **fire tiles** (HTTP actions and Home Assistant
+scenes); launch tiles (apps, web, shortcuts) show their action verb ("tap to open") instead — never a firing
+state.
 
 <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start">
-  <img src="/roost-android-launcher/img/density-slim.png" alt="Slim density — a compact list of small disc + label tiles with a terse right-aligned status on fire tiles" width="220" />
-  <img src="/roost-android-launcher/img/density-regular.png" alt="Regular density — a card per tile with disc, label, the per-kind tagline, and a full status line under fire tiles" width="220" />
-  <img src="/roost-android-launcher/img/density-rich.png" alt="Rich density — a two-column card grid with a big disc, label, a METHOD · host tagline, and the fire status" width="220" />
+  <img src="/roost-android-launcher/img/density-slim.png" alt="Slim density — the unified grid as a compact list: small disc + title, the metadata subtitle, and a terse right-aligned action (an app's 'tap to open', an HTTP tile's fire state)" width="220" />
+  <img src="/roost-android-launcher/img/density-regular.png" alt="Regular density — a card per tile: disc, title, the per-kind subtitle, and the action/status line" width="220" />
+  <img src="/roost-android-launcher/img/density-rich.png" alt="Rich density — a two-column card grid: a big disc, title, the per-kind subtitle, and the action/status line" width="220" />
 </div>
 
-- **Slim** — a dense list of compact cards: a small disc + label with a terse right-aligned status on fire
-  tiles (`ready` / `firing…` / `200 OK` / `502`). The most tiles in the least height — best for a busy home.
+- **Slim** — a dense list of compact cards: a small disc + label + subtitle with a terse right-aligned line —
+  the action verb on launch tiles (`tap to open`), the fire state on HTTP/scene tiles (`ready` / `firing…` /
+  `200 OK` / `502`). The most tiles in the least height — best for a busy home.
 - **Regular** (the default) — a card per tile: disc + label + the per-kind tagline, with a full status line
   beneath fire tiles and a `task` tag on durable-task actions. The balanced middle.
 - **Rich** — a two-column card grid: a big disc, label, the per-kind tagline (`METHOD · host` for HTTP, the

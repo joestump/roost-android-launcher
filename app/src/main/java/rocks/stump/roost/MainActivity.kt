@@ -944,7 +944,8 @@ class MainActivity : Activity() {
                 subtitle = subtitle,
                 density = density,
                 idleStatus = idleStatus,
-                tintIdleIcon = tintIcon
+                tintIdleIcon = tintIcon,
+                isFireKind = b.kind !in LAUNCH_KINDS
             )
             onFire = { invokeAction(b, this) }
         }
