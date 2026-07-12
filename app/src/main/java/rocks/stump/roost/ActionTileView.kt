@@ -180,9 +180,15 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         disc.layoutParams = LayoutParams(dp(24f), dp(24f))
         row.addView(disc)
 
+        labels.orientation = VERTICAL
         label.textSize = 13.5f
         label.typeface = Typeface.DEFAULT
-        row.addView(label, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(11f) })
+        labels.addView(label)
+        hostLabel.text = hostLine
+        hostLabel.visibility = if (hostLine.isBlank()) GONE else VISIBLE
+        hostLabel.setPadding(0, dp(1f), 0, 0)
+        labels.addView(hostLabel)
+        row.addView(labels, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(11f) })
 
         status.textSize = 9.5f
         status.setPadding(0, 0, 0, 0)
@@ -205,6 +211,11 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         label.textSize = 14.5f
         label.typeface = Roost.medium()
         labels.addView(label)
+        // Subtitle (metadata) line between title and the action line — all three lines on every tile.
+        hostLabel.text = hostLine
+        hostLabel.visibility = if (hostLine.isBlank()) GONE else VISIBLE
+        hostLabel.setPadding(0, dp(1f), 0, 0)
+        labels.addView(hostLabel)
         status.textSize = 10f
         status.setPadding(0, dp(2f), 0, 0)
         labels.addView(status)

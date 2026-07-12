@@ -14,12 +14,11 @@ chip**, an accent-tinted full-width **hero card** for the **featured agent**, th
 tiles**. Everything except the hero is the same tile — favorite apps, web apps, app shortcuts, Home Assistant
 scenes, and [HTTP actions](./http-actions.md) — with a **Store** tile at the tail for adding more. A **filter
 chip row** above the grid (`All`, plus a chip per kind present — Apps / Web / Shortcuts / HTTP / Scenes)
-narrows the tiles, and each tile carries a **per-kind tagline**: a web tile shows its host, an HTTP tile
-`METHOD · host`, a shortcut "shortcut", an app just its name. Tapping the mascot or the hero card opens your
-agent. On boot, the agent app is foregrounded once — optionally behind a
+narrows the tiles. Every tile carries the same three lines — a **title**, a **metadata subtitle**, and an
+**action line** — filled per kind: an app shows its package + "tap to open", a web tile its host, a shortcut
+"shortcut" + "tap to run", an HTTP tile `METHOD · host` + its fire state. Tapping the mascot or the hero card
+opens your agent. On boot, the agent app is foregrounded once — optionally behind a
 [waking-up sequence](./design.md#waking-up).
-
-<img src="/roost-android-launcher/img/home-filtered.png" alt="The home filtered to the Shortcuts kind — the Shortcuts chip active, and every tile an app shortcut tagged 'shortcut' (Joe in Signal, New tab in Firefox, Wi-Fi in Settings, and more)" width="320" />
 
 This is the relaxed default — a normal launcher that happens to be built around one agent.
 

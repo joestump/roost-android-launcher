@@ -463,20 +463,36 @@ class MainActivity : Activity() {
             ActionDensity.REGULAR -> 16f
             ActionDensity.RICH -> 17f
         }
+        val discSize = when (density) {
+            ActionDensity.SLIM -> 24f
+            ActionDensity.REGULAR -> 36f
+            ActionDensity.RICH -> 42f
+        }
         fun ghostBg() = android.graphics.drawable.GradientDrawable().apply {
             setColor(Roost.withAlpha(0xFFFFFFFF.toInt(), 0x08))
             cornerRadius = dp(radius).toFloat()
             setStroke(dp(1f), Roost.soft(accent), dp(3f).toFloat(), dp(3f).toFloat())
         }
-        val plus = ImageView(this).apply {
-            setImageResource(R.drawable.ic_plus)
-            setColorFilter(accent)
+        // A dotted accent circle around the "+", sized to match the real tiles' icon disc.
+        val plusDisc = FrameLayout(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(android.graphics.Color.TRANSPARENT)
+                setStroke(dp(1f), Roost.soft(accent), dp(3f).toFloat(), dp(3f).toFloat())
+            }
+            addView(ImageView(this@MainActivity).apply {
+                setImageResource(R.drawable.ic_plus)
+                setColorFilter(accent)
+                val p = if (density == ActionDensity.SLIM) dp(5f) else dp(8f)
+                setPadding(p, p, p, p)
+            }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         }
         val label = TextView(this).apply {
             text = getString(R.string.store)
             setTextColor(Roost.MUTED)
             textSize = if (density == ActionDensity.SLIM) 13.5f else 14.5f
             typeface = Roost.medium()
+            gravity = Gravity.CENTER
         }
         return if (density == ActionDensity.RICH) {
             LinearLayout(this).apply {
@@ -487,12 +503,11 @@ class MainActivity : Activity() {
                 setPadding(dp(14f), dp(14f), dp(14f), dp(14f))
                 isClickable = true
                 setOnClickListener { openPlayStore() }
-                addView(plus, LinearLayout.LayoutParams(dp(30f), dp(30f)))
+                addView(plusDisc, LinearLayout.LayoutParams(dp(discSize), dp(discSize)))
                 addView(label.apply { setPadding(0, dp(9f), 0, 0) })
             }
         } else {
             val padV = if (density == ActionDensity.SLIM) 9f else 12f
-            val disc = if (density == ActionDensity.SLIM) 24f else 36f
             LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -501,7 +516,7 @@ class MainActivity : Activity() {
                     dp(14f), dp(padV))
                 isClickable = true
                 setOnClickListener { openPlayStore() }
-                addView(plus, LinearLayout.LayoutParams(dp(disc), dp(disc)))
+                addView(plusDisc, LinearLayout.LayoutParams(dp(discSize), dp(discSize)))
                 addView(label.apply { setPadding(dp(12f), 0, 0, 0) })
             }
         }
@@ -896,17 +911,16 @@ class MainActivity : Activity() {
     private fun buildActionTile(b: ActionButton, density: ActionDensity): ActionTileView {
         val http = if (b.kind == ActionKind.HTTP) Prefs.httpAction(this, b.a) else null
         val isTask = http != null && HttpActionClient.hostOf(http.url).contains("switchboard")
-        // Per-kind (subtitle, idleStatus, showStatus): apps are icon+name only; web shows its host;
-        // shortcuts read "shortcut"; HTTP shows "METHOD · host" + a fire status; scenes read "scene".
-        val (subtitle, idleStatus, showStatus) = when (b.kind) {
-            ActionKind.APP -> Triple("", "", false)
-            ActionKind.WEB -> Triple(HttpActionClient.hostOf(b.a), "", false)
-            ActionKind.SHORTCUT -> Triple("shortcut", "", false)
-            ActionKind.HTTP -> {
-                val sub = if (http == null) "" else "${http.method} · ${HttpActionClient.hostOf(http.url)}"
-                Triple(sub, "tap to fire", true)
-            }
-            ActionKind.HASS_SCENE -> Triple("scene", "tap to run", true)
+        // Every tile carries all three lines: title, a metadata subtitle, and an action line. The subtitle
+        // and the action verb are per kind — apps show their package + "tap to open", web its host, a
+        // shortcut "shortcut" + "tap to run", HTTP "METHOD · host" + the fire status, a scene "scene".
+        val (subtitle, idleStatus) = when (b.kind) {
+            ActionKind.APP -> b.a to "tap to open"
+            ActionKind.WEB -> HttpActionClient.hostOf(b.a) to "tap to open"
+            ActionKind.SHORTCUT -> "shortcut" to "tap to run"
+            ActionKind.HTTP ->
+                (if (http == null) "" else "${http.method} · ${HttpActionClient.hostOf(http.url)}") to "tap to fire"
+            ActionKind.HASS_SCENE -> "scene" to "tap to run"
         }
         val override = overrideIcon(b.key)
         // Tint only monochrome glyphs with the accent: a picked/synced override iff it's a mono slug icon
@@ -923,7 +937,6 @@ class MainActivity : Activity() {
                 subtitle = subtitle,
                 density = density,
                 idleStatus = idleStatus,
-                showStatus = showStatus,
                 tintIdleIcon = tintIcon
             )
             onFire = { invokeAction(b, this) }
