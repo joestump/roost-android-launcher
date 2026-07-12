@@ -160,7 +160,9 @@ class IconPickerActivity : Activity() {
             else IconStore.cacheRaster(this, IconStore.selfhstPngUrl(name))
             runOnUiThread {
                 if (file != null) {
-                    Prefs.setIconOverride(this, key, file.path)
+                    // src.svg == true is exactly the two monochrome slug sets (Simple Icons, Heroicons);
+                    // selfh.st is the raster branch — so mono is a precise, source-derived discriminator.
+                    Prefs.setIconOverride(this, key, file.path, mono = src.svg)
                     Toast.makeText(this, R.string.icon_applied, Toast.LENGTH_SHORT).show()
                     finish()
                 } else {

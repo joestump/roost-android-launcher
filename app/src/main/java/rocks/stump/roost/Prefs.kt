@@ -35,6 +35,7 @@ object Prefs {
     private const val K_BOOT_LAUNCH = "auto_launch_boot"
     private const val K_KEEP_SCREEN_ON = "keep_screen_on"
     private const val K_BANDWIDTH = "bandwidth_graph"
+    private const val K_BOOT_INTRO = "boot_intro"
     private const val K_AGENT_PKG = "agent_pkg"
     private const val K_FAVORITES = "favorites"
     private const val K_PENDING_BOOT = "pending_boot_launch"
@@ -46,7 +47,17 @@ object Prefs {
     private const val K_HASS_ACCOUNTS = "hass_accounts"
     private const val K_ACTION_BUTTONS = "action_buttons"
     private const val K_HIDDEN = "hidden_items"
+    private const val K_DISABLED_ACTIONS = "disabled_action_keys"
     private const val K_ICON_OVERRIDES = "icon_overrides"
+    private const val K_ICON_OVERRIDE_MONO = "icon_override_mono"
+    private const val K_HTTP_ACTIONS = "http_actions"
+    private const val K_HTTP_SECRETS = "http_secrets"
+    private const val K_ACTION_DENSITY = "action_density"
+    private const val K_SYNCED_FOLDER = "synced_folder_uri"
+    private const val K_SYNCED_IDS = "synced_action_ids"
+    private const val K_SYNCED_SOURCES = "synced_action_sources"
+    private const val K_SYNC_LAST_AT = "sync_last_at"
+    private const val K_SYNC_LAST_SUMMARY = "sync_last_summary"
 
     private fun sp(c: Context): SharedPreferences =
         c.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -62,6 +73,13 @@ object Prefs {
 
     fun bandwidthGraph(c: Context): Boolean = sp(c).getBoolean(K_BANDWIDTH, true)
     fun setBandwidthGraph(c: Context, v: Boolean) = sp(c).edit().putBoolean(K_BANDWIDTH, v).apply()
+
+    /**
+     * Play the "waking up" boot intro (mascot + terminal boot log) after a boot-triggered launch, in
+     * curated mode. Off by default so normal home launch is unchanged; a simple flag gates the screen.
+     */
+    fun bootIntro(c: Context): Boolean = sp(c).getBoolean(K_BOOT_INTRO, false)
+    fun setBootIntro(c: Context, v: Boolean) = sp(c).edit().putBoolean(K_BOOT_INTRO, v).apply()
 
     fun agentPkg(c: Context): String = sp(c).getString(K_AGENT_PKG, DEFAULT_AGENT_PKG) ?: DEFAULT_AGENT_PKG
     fun setAgentPkg(c: Context, v: String) = sp(c).edit().putString(K_AGENT_PKG, v).apply()
@@ -148,6 +166,136 @@ object Prefs {
         sp(c).edit().putString(K_ACTION_BUTTONS, arr.toString()).apply()
     }
 
+    // --- HTTP actions (generalized provider) ---
+    // A tolerant JSON collection keyed by id, mirroring hass_accounts: a malformed entry is skipped,
+    // never fatal, and there is no migration/seed. Secrets live in a parallel keyed store so they
+    // never travel inline with the definition.
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "General HTTP-action definition"
+
+    fun httpActions(c: Context): MutableList<HttpAction> {
+        val arr = JSONArray(sp(c).getString(K_HTTP_ACTIONS, "[]") ?: "[]")
+        val out = mutableListOf<HttpAction>()
+        for (i in 0 until arr.length()) {
+            val o = runCatching { arr.getJSONObject(i) }.getOrNull() ?: continue
+            val id = o.optString("id")
+            if (id.isBlank()) continue                                    // skip malformed
+            val auth = runCatching { HttpAuth.valueOf(o.optString("auth", "NONE")) }
+                .getOrDefault(HttpAuth.NONE)
+            val headers = mutableListOf<Pair<String, String>>()
+            val ha = o.optJSONArray("headers")
+            if (ha != null) {
+                for (j in 0 until ha.length()) {
+                    val h = runCatching { ha.getJSONObject(j) }.getOrNull() ?: continue
+                    val k = h.optString("k")
+                    if (k.isNotBlank()) headers.add(k to h.optString("v"))
+                }
+            }
+            out.add(
+                HttpAction(
+                    id, o.optString("method", "POST").ifBlank { "POST" },
+                    o.optString("url"), headers, auth, o.optString("body")
+                )
+            )
+        }
+        return out
+    }
+
+    fun setHttpActions(c: Context, actions: List<HttpAction>) {
+        val arr = JSONArray()
+        actions.forEach { a ->
+            val ha = JSONArray()
+            a.headers.forEach { (k, v) -> ha.put(JSONObject().put("k", k).put("v", v)) }
+            arr.put(
+                JSONObject().put("id", a.id).put("method", a.method).put("url", a.url)
+                    .put("auth", a.auth.name).put("body", a.body).put("headers", ha)
+            )
+        }
+        sp(c).edit().putString(K_HTTP_ACTIONS, arr.toString()).apply()
+    }
+
+    fun httpAction(c: Context, id: String): HttpAction? = httpActions(c).find { it.id == id }
+
+    /** Insert or replace [action] by id. */
+    fun setHttpAction(c: Context, action: HttpAction) {
+        val cur = httpActions(c).filterNot { it.id == action.id }.toMutableList()
+        cur.add(action)
+        setHttpActions(c, cur)
+    }
+
+    fun removeHttpAction(c: Context, id: String) {
+        setHttpActions(c, httpActions(c).filterNot { it.id == id })
+        setHttpSecret(c, id, null)
+        setActionButtons(c, actionButtons(c).filterNot { it.kind == ActionKind.HTTP && it.a == id })
+        // Prune the per-button side stores keyed by "http:<id>" so a later action re-created with the
+        // same id can't inherit a stale icon override or a leftover disable/hide flag.
+        val key = "http:$id"
+        setIconOverride(c, key, null)
+        setActionDisabled(c, key, false)
+        setHidden(c, key, false)
+    }
+
+    // Secrets keyed by action id — entered masked, shown only as •••• last4, redacted from echoes.
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Secret handling"
+    fun httpSecret(c: Context, id: String): String {
+        val o = JSONObject(sp(c).getString(K_HTTP_SECRETS, "{}") ?: "{}")
+        return if (o.has(id)) o.optString(id) else ""
+    }
+
+    fun setHttpSecret(c: Context, id: String, value: String?) {
+        val o = JSONObject(sp(c).getString(K_HTTP_SECRETS, "{}") ?: "{}")
+        if (value.isNullOrEmpty()) o.remove(id) else o.put(id, value)
+        sp(c).edit().putString(K_HTTP_SECRETS, o.toString()).apply()
+    }
+
+    // --- Synced actions (declarative provisioning from a granted folder) ---
+    // The persisted SAF tree URI of the owner's Syncthing-shared folder, the set of ids Roost has
+    // imported from that folder's actions.d/*.json (the reconcile-removal scope — manual actions are
+    // never in here), and a compact last-sync status. All tolerant/typed like the collections above.
+    // Governing: ADR-0006 (declarative action provisioning), SPEC-0003 REQ "Grant a synced folder"
+
+    /** The persisted SAF tree URI (as a String), or null if no folder has been granted. */
+    fun syncedFolderUri(c: Context): String? = sp(c).getString(K_SYNCED_FOLDER, null)
+    fun setSyncedFolderUri(c: Context, uri: String?) =
+        sp(c).edit().putString(K_SYNCED_FOLDER, uri).apply()
+
+    /** The ids Roost imported from the folder — the ONLY ids a sync is allowed to remove. */
+    fun syncedActionIds(c: Context): MutableSet<String> =
+        LinkedHashSet(sp(c).getStringSet(K_SYNCED_IDS, emptySet()) ?: emptySet())
+    fun setSyncedActionIds(c: Context, ids: Set<String>) =
+        sp(c).edit().putStringSet(K_SYNCED_IDS, LinkedHashSet(ids)).apply()
+
+    /** id → source filename for each synced action, so removal keys off file PRESENCE (a present-but-
+     *  malformed file still protects its action) rather than parseability. */
+    fun syncedActionSources(c: Context): Map<String, String> {
+        val o = JSONObject(sp(c).getString(K_SYNCED_SOURCES, "{}") ?: "{}")
+        val out = LinkedHashMap<String, String>()
+        for (k in o.keys()) out[k] = o.optString(k)
+        return out
+    }
+    fun setSyncedActionSources(c: Context, map: Map<String, String>) {
+        val o = JSONObject()
+        map.forEach { (id, name) -> o.put(id, name) }
+        sp(c).edit().putString(K_SYNCED_SOURCES, o.toString()).apply()
+    }
+
+    fun syncLastAt(c: Context): Long = sp(c).getLong(K_SYNC_LAST_AT, 0L)
+    fun syncLastSummary(c: Context): String = sp(c).getString(K_SYNC_LAST_SUMMARY, "") ?: ""
+    fun setSyncLast(c: Context, at: Long, summary: String) =
+        sp(c).edit().putLong(K_SYNC_LAST_AT, at).putString(K_SYNC_LAST_SUMMARY, summary).apply()
+
+    // --- Action-zone tile density (one setting for the whole zone) ---
+    // Stored as the enum name; a bad/absent value falls back to REGULAR (today's look).
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "On-tile firing state machine"
+    fun actionDensity(c: Context): ActionDensity =
+        runCatching {
+            ActionDensity.valueOf(
+                sp(c).getString(K_ACTION_DENSITY, ActionDensity.REGULAR.name) ?: ActionDensity.REGULAR.name
+            )
+        }.getOrDefault(ActionDensity.REGULAR)
+
+    fun setActionDensity(c: Context, d: ActionDensity) =
+        sp(c).edit().putString(K_ACTION_DENSITY, d.name).apply()
+
     // --- Hidden items (long-press → Hide; recoverable) ---
 
     fun hiddenItems(c: Context): MutableSet<String> =
@@ -161,24 +309,65 @@ object Prefs {
         sp(c).edit().putStringSet(K_HIDDEN, cur).apply()
     }
 
+    // --- Disabled action buttons (Arrange screen → soft on/off, distinct from Hide) ---
+    // A key-keyed StringSet, mirroring hidden_items, that the home render filter honors. It is a "soft"
+    // disable that KEEPS the button in action_buttons (so its SHORTCUT/HASS args survive and it can be
+    // re-enabled from Arrange, which has no live scanner) and is orthogonal to drag order.
+    fun disabledActionKeys(c: Context): MutableSet<String> =
+        LinkedHashSet(sp(c).getStringSet(K_DISABLED_ACTIONS, emptySet()) ?: emptySet())
+
+    fun isActionDisabled(c: Context, key: String): Boolean = disabledActionKeys(c).contains(key)
+
+    fun setActionDisabled(c: Context, key: String, disabled: Boolean) {
+        val cur = disabledActionKeys(c)
+        if (disabled) cur.add(key) else cur.remove(key)
+        sp(c).edit().putStringSet(K_DISABLED_ACTIONS, cur).apply()
+    }
+
     // --- Icon overrides (long-press → Change icon; key → cached file path) ---
+    // A parallel key→bool map records whether the override is a MONOCHROME slug glyph (Simple Icons /
+    // Heroicons) — those may be tinted with the theme accent at draw time; full-color overrides
+    // (selfh.st logos, app icons) must not be. The flag is set at pick/sync time where the source is
+    // known and cleared whenever the override is reset, so it can never desync from the path.
 
     fun iconOverride(c: Context, key: String): String? {
         val o = JSONObject(sp(c).getString(K_ICON_OVERRIDES, "{}") ?: "{}")
         return if (o.has(key)) o.optString(key) else null
     }
 
-    fun setIconOverride(c: Context, key: String, path: String?) {
+    /** True only if the current override for [key] is a monochrome slug icon eligible for accent tint. */
+    fun iconOverrideIsMono(c: Context, key: String): Boolean {
+        val o = JSONObject(sp(c).getString(K_ICON_OVERRIDE_MONO, "{}") ?: "{}")
+        return o.optBoolean(key, false)
+    }
+
+    fun setIconOverride(c: Context, key: String, path: String?, mono: Boolean = false) {
         val o = JSONObject(sp(c).getString(K_ICON_OVERRIDES, "{}") ?: "{}")
-        if (path == null) o.remove(key) else o.put(key, path)
-        sp(c).edit().putString(K_ICON_OVERRIDES, o.toString()).apply()
+        val m = JSONObject(sp(c).getString(K_ICON_OVERRIDE_MONO, "{}") ?: "{}")
+        if (path == null) {
+            o.remove(key); m.remove(key)                 // reset clears both, never desyncs
+        } else {
+            o.put(key, path)
+            if (mono) m.put(key, true) else m.remove(key)
+        }
+        sp(c).edit()
+            .putString(K_ICON_OVERRIDES, o.toString())
+            .putString(K_ICON_OVERRIDE_MONO, m.toString())
+            .apply()
     }
 
     fun isActionEnabled(c: Context, key: String): Boolean = actionButtons(c).any { it.key == key }
 
     fun setActionEnabled(c: Context, button: ActionButton, enabled: Boolean) {
         val cur = actionButtons(c).filterNot { it.key == button.key }.toMutableList()
-        if (enabled) cur.add(button)
+        if (enabled) {
+            cur.add(button)
+            // A fresh (re-)enable is meant to be visible on home: drop any stale off-home flags a prior
+            // instance with this same deterministic key left behind, so the button isn't silently
+            // suppressed by a leftover disable/hide.
+            setActionDisabled(c, button.key, false)
+            setHidden(c, button.key, false)
+        }
         setActionButtons(c, cur)
     }
 

@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <!-- A folder (the granted actions.d/ directory) with a small sync-arrow motif. -->
+    <path android:fillColor="#00000000" android:strokeColor="#FFF3EEE4" android:strokeWidth="1.6"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M3,7 a1,1 0 0 1 1,-1 h5 l2,2 h9 a1,1 0 0 1 1,1 v7 a1,1 0 0 1 -1,1 h-16 a1,1 0 0 1 -1,-1 z" />
+    <path android:fillColor="#FFF3EEE4"
+        android:pathData="M15,12.5 l2.2,-2.2 2.2,2.2 -1.4,0 a2.6,2.6 0 1 1 -2.6,2.6 l1.3,0 a1.3,1.3 0 1 0 1.3,-1.3 l0,1.3 z" />
+</vector>

@@ -15,6 +15,10 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -44,8 +48,22 @@ class MainActivity : Activity() {
     private var greetingLabel: TextView? = null
     private var statusLabel: TextView? = null
     private var vpnChipView: TextView? = null
+    private var mascotView: MascotView? = null
     private var rxRate = 0L
     private var txRate = 0L
+
+    // "Awake / working" presence: derived from live network throughput with a short linger, so the
+    // mascot brightens + the greeting flips to "working…" while the agent is actually pushing traffic,
+    // then settles back to "home" once it goes quiet. Purely presentational.
+    private var awake = false
+    private var lastActiveAt = 0L
+
+    // Debounce for tap-to-launch SHORTCUT actions — they fire synchronously (never PENDING), so the
+    // isPending() guard can't stop a fast double-tap from launching the target twice. (Fix 9.)
+    private var lastShortcutFireAt = 0L
+
+    // Guards the on-resume synced-actions reconcile so it runs at most once per resume (ADR-0006).
+    private var syncReconciling = false
 
     // Independent 1s traffic-rate poll so the VPN chip always shows live up/down speeds,
     // regardless of whether the "Bandwidth heartbeat" graph is enabled.
@@ -62,9 +80,13 @@ class MainActivity : Activity() {
             lastRxBytes = rx
             lastTxBytes = tx
             refreshVpnChip()
+            updateAwake()
             rateHandler.postDelayed(this, 1000L)
         }
     }
+
+    // Drives the "waking up" boot-log line reveals; cleared on pause so it never fires off-screen.
+    private val bootHandler = Handler(Looper.getMainLooper())
 
     private var batteryRegistered = false
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -85,18 +107,46 @@ class MainActivity : Activity() {
 
         if (Prefs.pendingBootLaunch(this)) {
             Prefs.setPendingBootLaunch(this, false)
+            // Optional "waking up" intro on curated boots (gated by a flag, off by default). It reveals
+            // the home itself when the sequence finishes, so it never blocks a normal launch.
+            if (Prefs.bootIntro(this) && Prefs.mode(this) == Prefs.MODE_CURATED) {
+                registerBattery()
+                startRatePoll()
+                // This intro stands in for the auto-launch-on-boot; hand off to the agent when it
+                // finishes instead of stranding on home (enabling the intro must not defeat auto-launch).
+                renderWaking(launchAgentWhenDone = true)
+                return
+            }
             if (launchAgent()) return
         }
 
         render()
         registerBattery()
         startRatePoll()
+        maybeReconcileSynced()
+    }
+
+    // If a synced folder is granted, reconcile actions.d/*.json OFF the main thread and re-render the
+    // home only if something changed. Guarded so it runs at most once per resume and never blocks UI.
+    // Governing: ADR-0006 (declarative action provisioning), SPEC-0003 REQ "Reconcile trigger and ordering"
+    private fun maybeReconcileSynced() {
+        if (Prefs.syncedFolderUri(this) == null) return
+        if (syncReconciling) return
+        syncReconciling = true
+        Thread {
+            val res = SyncedActions.reconcile(this)
+            runOnUiThread {
+                syncReconciling = false
+                if (res.changed() && !isFinishing) render()
+            }
+        }.start()
     }
 
     override fun onPause() {
         super.onPause()
         unregisterBattery()
         stopRatePoll()
+        bootHandler.removeCallbacksAndMessages(null)
     }
 
     private fun startRatePoll() {
@@ -147,9 +197,13 @@ class MainActivity : Activity() {
         col.addView(greetingView())
         col.addView(statusView())
         vpnChip()?.let { col.addView(it) }
-        col.addView(spacer(dp(24f)))
+        featuredHero()?.let {
+            col.addView(spacer(dp(22f)))
+            col.addView(it)
+        }
+        col.addView(spacer(dp(20f)))
         col.addView(utilityGrid())
-        actionRow()?.let { col.addView(it) }
+        actionsZone()?.let { col.addView(it) }
         col.addView(weightedSpacer())
         col.addView(appsSettingsLink(dp(16f)))
 
@@ -226,11 +280,13 @@ class MainActivity : Activity() {
 
     private fun mascot(sizePx: Int): MascotView = MascotView(this).apply {
         accent = this@MainActivity.accent
+        awake = this@MainActivity.awake
         isClickable = true
         setOnClickListener { launchAgent() }
         layoutParams = LinearLayout.LayoutParams(sizePx, sizePx).apply {
             gravity = Gravity.CENTER_HORIZONTAL
         }
+        mascotView = this
     }
 
     private fun greetingView(): TextView = TextView(this).apply {
@@ -254,15 +310,40 @@ class MainActivity : Activity() {
 
     private fun greeting(): String {
         val name = Prefs.agentName(this).trim()
-        return if (name.isNotEmpty()) getString(R.string.greeting_named, name)
-        else getString(R.string.greeting_home)
+        return when {
+            awake && name.isNotEmpty() -> getString(R.string.greeting_working_named, name)
+            awake -> getString(R.string.greeting_working)
+            name.isNotEmpty() -> getString(R.string.greeting_named, name)
+            else -> getString(R.string.greeting_home)
+        }
     }
 
     private fun statusLine(): String {
         val (pct, charging) = battery()
         val who = Prefs.agentName(this).trim().ifEmpty { "roost" }
-        val word = if (charging) "docked & charging" else "on battery"
-        return if (pct >= 0) "$who · $word · $pct%" else "$who · $word"
+        // "awake · working…" takes precedence over the power state, matching the mockup.
+        val word = when {
+            awake -> "awake · working…"
+            charging -> "docked & charging"
+            else -> "on battery"
+        }
+        // While working the % is noise; keep the line focused on the "working…" state.
+        return if (!awake && pct >= 0) "$who · $word · $pct%" else "$who · $word"
+    }
+
+    /**
+     * Recompute the "awake" presence from the current traffic rate (with a short linger so it doesn't
+     * flicker), and push it to the mascot + greeting/status. Called each second by [rateTick].
+     */
+    private fun updateAwake() {
+        val now = SystemClock.uptimeMillis()
+        if (rxRate + txRate > AWAKE_THRESHOLD) lastActiveAt = now
+        val nowAwake = lastActiveAt != 0L && (now - lastActiveAt) < AWAKE_LINGER_MS
+        if (nowAwake != awake) {
+            awake = nowAwake
+            mascotView?.awake = awake
+            refreshStatus()
+        }
     }
 
     /** Returns (battery %, isOnPower). Reads the sticky ACTION_BATTERY_CHANGED intent. */
@@ -298,20 +379,13 @@ class MainActivity : Activity() {
     // tiles (space-between) so column 1 hugs the left content edge and column 3 hugs the right.
     // GridLayout weight sizing is unreliable, so we lay out rows + spacers by hand.
     private fun utilityGrid(): View {
-        val columns = 3
+        val columns = 4
         val tileWidth = dp(78f)
         val agentPkg = Prefs.agentPkg(this)
         val tiles = mutableListOf<View>()
 
-        // Featured agent — same tile size/style as the rest, marked with an accent ring.
-        if (!Prefs.isHidden(this, "agent")) {
-            val at = tile(
-                appLabel(agentPkg) ?: "Agent",
-                overrideIcon("agent") ?: appIcon(agentPkg), tileWidth, ringed = true
-            ) { launchAgent() }
-            tileMenu(at, "agent") { uninstallApp(agentPkg) }
-            tiles.add(at)
-        }
+        // The featured agent is now the full-width hero card above the grid (see featuredHero()), so it
+        // is intentionally NOT rendered as a grid tile here — no double-listing.
 
         // Installed favorites (minus the agent + hidden), alphabetical.
         Prefs.favorites(this)
@@ -398,7 +472,17 @@ class MainActivity : Activity() {
             else -> Roost.HAIRLINE
         }
         val surface = FrameLayout(this).apply {
-            background = Roost.rounded(Roost.TILE, dp(16f).toFloat(), borderColor, dp(if (ringed) 2f else 1f))
+            // The "Add"/Store slot reads as a ghost: a faint fill + a dashed accent border, distinct
+            // from real app tiles (solid TILE fill + solid hairline), per the mockup.
+            background = if (isAdd) {
+                android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Roost.withAlpha(0xFFFFFFFF.toInt(), 0x08))
+                    cornerRadius = dp(16f).toFloat()
+                    setStroke(dp(1f), Roost.soft(accent), dp(3f).toFloat(), dp(3f).toFloat())
+                }
+            } else {
+                Roost.rounded(Roost.TILE, dp(16f).toFloat(), borderColor, dp(if (ringed) 2f else 1f))
+            }
             val s = dp(66f)
             layoutParams = LinearLayout.LayoutParams(s, s)
         }
@@ -431,13 +515,23 @@ class MainActivity : Activity() {
         return cell
     }
 
-    private fun appsSettingsLink(topPx: Int): TextView = TextView(this).apply {
-        text = getString(R.string.apps_and_settings)
-        setTextColor(Roost.MUTED)
-        textSize = 14f
+    // "Apps & Settings" — a gear glyph + label, centered, per the design (was text-only).
+    private fun appsSettingsLink(topPx: Int): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER
         setPadding(0, topPx, 0, 0)
+        isClickable = true
         setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
+        addView(ImageView(this@MainActivity).apply {
+            setImageResource(R.drawable.ic_settings)
+            setColorFilter(Roost.MUTED)
+            layoutParams = LinearLayout.LayoutParams(dp(16f), dp(16f)).apply { rightMargin = dp(8f) }
+        })
+        addView(TextView(this@MainActivity).apply {
+            text = getString(R.string.apps_and_settings)
+            setTextColor(Roost.MUTED)
+            textSize = 14f
+        })
     }
 
     private fun spacer(heightPx: Int): View = View(this).apply {
@@ -447,6 +541,174 @@ class MainActivity : Activity() {
     /** Expands to fill leftover space, pushing "Apps & settings" to the bottom (with fillViewport). */
     private fun weightedSpacer(): View = View(this).apply {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+    }
+
+    // --- Featured-agent hero card -----------------------------------------------------------
+    // A full-width horizontal card: a ~60dp rounded app icon (the featured app's real icon, or a
+    // dashed placeholder + starburst if it isn't installed), the app's display name + a mono subtitle,
+    // and a "FEATURED" pill. Tapping launches the agent. This replaces the old "first grid tile with an
+    // accent ring", so the agent shows exactly once (hero here, not in the grid).
+    // Returns null when the agent has been hidden via the long-press menu (Prefs.isHidden "agent"),
+    // mirroring the old grid tile's `if (!Prefs.isHidden(this, "agent"))` guard so Hide isn't a no-op.
+    private fun featuredHero(): View? {
+        if (Prefs.isHidden(this, "agent")) return null
+        val agentPkg = Prefs.agentPkg(this)
+        val installed = isInstalled(agentPkg)
+        val whiteFill = Roost.withAlpha(0xFFFFFFFF.toInt(), 0x0B)   // rgba(255,255,255,0.045)
+        val whiteBorder = Roost.withAlpha(0xFFFFFFFF.toInt(), 0x12) // rgba(255,255,255,0.07)
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Roost.rounded(whiteFill, dp(22f).toFloat(), whiteBorder, dp(1f))
+            setPadding(dp(15f), dp(15f), dp(15f), dp(15f))
+            isClickable = true
+            setOnClickListener { launchAgent() }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        // Icon box (60dp, radius 17).
+        val box = FrameLayout(this).apply {
+            val s = dp(60f)
+            layoutParams = LinearLayout.LayoutParams(s, s).apply { rightMargin = dp(15f) }
+        }
+        val override = overrideIcon("agent")
+        if (installed || override != null) {
+            box.background = Roost.rounded(Roost.TILE, dp(17f).toFloat(), Roost.HAIRLINE, dp(1f))
+            box.addView(ImageView(this).apply {
+                setImageDrawable(override ?: appIcon(agentPkg))
+                val p = dp(9f); setPadding(p, p, p, p)
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            })
+        } else {
+            // Not installed: dashed placeholder + accent starburst, per the mockup.
+            box.background = GradientDrawableCompatDashed(dp(17f).toFloat())
+            box.addView(ImageView(this).apply {
+                setImageResource(R.drawable.ic_agent_star)
+                setColorFilter(accent)
+                val p = dp(17f); setPadding(p, p, p, p)
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            })
+        }
+        card.addView(box)
+
+        // Name + mono subtitle (weighted so the pill hugs the right edge).
+        val mid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        mid.addView(TextView(this).apply {
+            text = appLabel(agentPkg) ?: "Agent"
+            setTextColor(Roost.TEXT)
+            textSize = 18f
+            typeface = Roost.medium()
+            maxLines = 1
+        })
+        mid.addView(TextView(this).apply {
+            text = if (installed) getString(R.string.featured_subtitle)
+            else getString(R.string.featured_not_installed)
+            setTextColor(0xFF8F8578.toInt())
+            textSize = 10.5f
+            typeface = Typeface.MONOSPACE
+            maxLines = 1
+            setPadding(0, dp(3f), 0, 0)
+        })
+        card.addView(mid)
+
+        // "FEATURED" pill — accent text + soft-accent border.
+        card.addView(TextView(this).apply {
+            text = getString(R.string.featured)
+            setTextColor(accent)
+            textSize = 9f
+            letterSpacing = 0.12f
+            typeface = Typeface.MONOSPACE
+            setPadding(dp(8f), dp(4f), dp(8f), dp(4f))
+            background = Roost.rounded(0, dp(20f).toFloat(), Roost.soft(accent), dp(1f))
+        })
+
+        // Preserve long-press affordances (change icon / hide) on the featured item.
+        tileMenu(card, "agent") { uninstallApp(agentPkg) }
+        return card
+    }
+
+    /** A rounded-rect with a dashed hairline stroke — the "no app yet" placeholder fill. */
+    @Suppress("FunctionName")
+    private fun GradientDrawableCompatDashed(radiusPx: Float): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            setColor(Roost.withAlpha(0xFFFFFFFF.toInt(), 0x08))
+            cornerRadius = radiusPx
+            setStroke(dp(1f), Roost.withAlpha(0xFFFFFFFF.toInt(), 0x28), dp(3f).toFloat(), dp(3f).toFloat())
+        }
+
+    // --- "Waking up" boot intro (framework-only; gated behind Prefs.bootIntro) --------------
+    // A brief boot sequence: the awake mascot + a monospace terminal boot log that fades in line by
+    // line, then "good morning.", then it reveals the curated home. Driven entirely by Handler-delayed
+    // reveals + ViewPropertyAnimator fades (no animation library). Reaching home on its own means this
+    // can never strand the launcher on the intro screen.
+    private fun renderWaking(launchAgentWhenDone: Boolean = false) {
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(30f), dp(30f), dp(30f), dp(40f))
+        }
+        col.addView(mascot(dp(150f)).apply { awake = true })
+        col.addView(spacer(dp(24f)))
+
+        val log = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(dp(240f), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        fun logLine(res: Int, big: Boolean): TextView = TextView(this).apply {
+            text = if (big) getString(res) else bootLine(getString(res))
+            setTextColor(if (big) Roost.TEXT else 0xFF8F8578.toInt())
+            textSize = if (big) 15f else 12f
+            typeface = if (big) Typeface.DEFAULT else Typeface.MONOSPACE
+            alpha = 0f
+            setPadding(0, if (big) dp(8f) else dp(3f), 0, dp(3f))
+        }
+        val l1 = logLine(R.string.boot_line_mount, false)
+        val l2 = logLine(R.string.boot_line_tunnel, false)
+        val l3 = logLine(R.string.boot_line_online, false)
+        val l4 = logLine(R.string.boot_good_morning, true)
+        listOf(l1, l2, l3, l4).forEach { log.addView(it) }
+        col.addView(log)
+
+        setContentView(FrameLayout(this).apply {
+            background = Roost.dockBackground(this@MainActivity)
+            addView(
+                col,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                ).apply { gravity = Gravity.CENTER }
+            )
+        })
+
+        fun reveal(v: View) { v.animate().alpha(1f).setDuration(400).start() }
+        bootHandler.postDelayed({ reveal(l1) }, 150)
+        bootHandler.postDelayed({ reveal(l2) }, 550)
+        bootHandler.postDelayed({ reveal(l3) }, 950)
+        bootHandler.postDelayed({ reveal(l4) }, 1450)
+        // Finally, hand off: for a boot launch, actually launch the agent (consuming the pending flag
+        // was already done in onResume) so the intro doesn't silently defeat auto-launch-on-boot; if the
+        // agent can't launch, fall back to the curated home. For a manual/preview intro, end on home.
+        bootHandler.postDelayed({
+            if (launchAgentWhenDone) { if (!launchAgent()) renderHome() } else renderHome()
+        }, 2900)
+    }
+
+    /** Style a "[ ok ] …" boot line so the "[ ok ]" prefix is accent-colored. */
+    private fun bootLine(line: String): CharSequence {
+        val end = line.indexOf(']')
+        if (end < 0) return line
+        val sp = SpannableString(line)
+        sp.setSpan(ForegroundColorSpan(accent), 0, end + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return sp
     }
 
     // --- VPN (WireGuard) --------------------------------------------------------------------
@@ -476,12 +738,15 @@ class MainActivity : Activity() {
         val up = vpnUp()
         val base = getString(if (up) R.string.vpn_up else R.string.vpn_off)
         // When the VPN is up, ALWAYS show the up/down rates (even 0), independent of the graph toggle.
+        // Lead with a status dot ("● wg up …") like the mockup's green chip; the whole chip is Sage.
         chip.text = if (up)
-            "$base  ↓${formatRate(rxRate)} ↑${formatRate(txRate)}" else base
-        chip.setTextColor(if (up) accent else Roost.MUTED)
+            "● $base  ↓${formatRate(rxRate)} ↑${formatRate(txRate)}" else base
+        // "Up" uses the Sage semantic color (fill 10%, border 20%, text + dot Sage) per the mockup;
+        // "down"/off stays muted. Sage is a fixed color here, deliberately NOT the themeable accent.
+        chip.setTextColor(if (up) Roost.SAGE else Roost.MUTED)
         chip.background = Roost.rounded(
-            if (up) Roost.soft(accent) else Roost.TILE, dp(20f).toFloat(),
-            if (up) Roost.soft(accent) else Roost.HAIRLINE, dp(1f)
+            if (up) Roost.withAlpha(Roost.SAGE, 0x1A) else Roost.TILE, dp(20f).toFloat(),
+            if (up) Roost.withAlpha(Roost.SAGE, 0x33) else Roost.HAIRLINE, dp(1f)
         )
     }
 
@@ -529,14 +794,17 @@ class MainActivity : Activity() {
 
     // --- Long-press tile actions (Gitea issue #2) -------------------------------------------
 
-    private fun tileMenu(anchor: View, key: String, onDelete: () -> Unit) {
+    // [editHttpId] non-null adds an "Edit" item that opens the HTTP-action builder for that action id
+    // (only HTTP action tiles are editable in the builder — SHORTCUT/HASS tiles pass null, so no Edit).
+    private fun tileMenu(anchor: View, key: String, editHttpId: String? = null, onDelete: () -> Unit) {
         anchor.setOnLongClickListener {
             val p = PopupMenu(this, anchor)
-            p.menu.add(0, 1, 0, getString(R.string.tile_hide))
-            p.menu.add(0, 2, 1, getString(R.string.tile_delete))
-            p.menu.add(0, 3, 2, getString(R.string.tile_change_icon))
+            if (editHttpId != null) p.menu.add(0, 5, 0, getString(R.string.tile_edit))
+            p.menu.add(0, 1, 1, getString(R.string.tile_hide))
+            p.menu.add(0, 2, 2, getString(R.string.tile_delete))
+            p.menu.add(0, 3, 3, getString(R.string.tile_change_icon))
             if (Prefs.iconOverride(this, key) != null) {
-                p.menu.add(0, 4, 3, getString(R.string.tile_reset_icon))
+                p.menu.add(0, 4, 4, getString(R.string.tile_reset_icon))
             }
             p.setOnMenuItemClickListener { mi ->
                 when (mi.itemId) {
@@ -544,6 +812,11 @@ class MainActivity : Activity() {
                     2 -> { onDelete(); render(); true }
                     3 -> { openIconPicker(key); true }
                     4 -> { Prefs.setIconOverride(this, key, null); render(); true }
+                    5 -> {
+                        startActivity(Intent(this, HttpActionActivity::class.java)
+                            .putExtra(HttpActionActivity.EXTRA_ID, editHttpId))
+                        true
+                    }
                     else -> false
                 }
             }
@@ -573,86 +846,186 @@ class MainActivity : Activity() {
         return IconStore.drawableFor(this, path)
     }
 
-    // --- Action buttons (pluggable — see SPEC-0001) -----------------------------------------
+    // --- Actions zone (pluggable — SPEC-0001 / SPEC-0002) -----------------------------------
 
-    // Governing: ADR-0002 (pluggable action-button providers), SPEC-0001 REQ "Home-screen rendering"
-    private fun actionRow(): View? {
-        val buttons = Prefs.actionButtons(this).filter { !Prefs.isHidden(this, it.key) }
+    // A dedicated "Actions" band below the app grid: a mono uppercase "ACTIONS" header (label only —
+    // density lives in Settings → Appearance, adding actions in Settings → Action buttons), then the
+    // enabled ActionButtons as tiles. SLIM/REGULAR render as a vertical list; RICH lays the cards into a
+    // 2-column grid. HTTP and HASS_SCENE buttons fire through the on-tile state machine; SHORTCUT buttons
+    // launch on tap. No actions → no zone (the whole band is null).
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Actions zone placement"
+    private fun actionsZone(): View? {
+        val buttons = Prefs.actionButtons(this)
+            .filter { !Prefs.isHidden(this, it.key) && !Prefs.isActionDisabled(this, it.key) }
         if (buttons.isEmpty()) return null
-        // Wrapping flow (framework-only, ADR-0001) — pills fill left-to-right and wrap to a new
-        // line, left-aligned to the same left content margin as the utility grid.
-        val flow = FlowLayout(this, hGap = dp(10f), vGap = dp(10f)).apply {
-            setPadding(0, dp(18f), 0, 0)
+
+        val density = Prefs.actionDensity(this)
+
+        val zone = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(24f), 0, 0)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
-        buttons.forEach { b ->
-            val pill = actionPill(b)
-            tileMenu(pill, b.key) { Prefs.setActionEnabled(this, b, false) }
-            flow.addView(pill)
-        }
-        return flow
-    }
 
-    private fun actionPill(b: ActionButton): View {
-        val pill = LinearLayout(this).apply {
+        // Header is now just the "ACTIONS" label. The inline density switcher + "+" builder were
+        // removed (too small to tap comfortably): density is set in Settings → Appearance, actions are
+        // added in Settings → Action buttons. Density-aware rendering (slim/regular/rich) is unchanged.
+        val head = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            // Action pills follow the theme accent (soft-accent fill + accent hairline).
-            background = Roost.rounded(Roost.soft(accent), dp(20f).toFloat(), accent, dp(1f))
-            setPadding(dp(12f), dp(9f), dp(14f), dp(9f))
-            isClickable = true
-            setOnClickListener { invokeAction(b) }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            setPadding(dp(2f), 0, dp(2f), dp(12f))
         }
-        val ov = overrideIcon(b.key)
-        pill.addView(ImageView(this).apply {
-            setImageDrawable(ov ?: actionIcon(b))
-            if (ov == null && b.kind == ActionKind.HASS_SCENE) setColorFilter(accent)
-            val s = dp(20f)
-            layoutParams = LinearLayout.LayoutParams(s, s)
+        head.addView(TextView(this).apply {
+            text = "ACTIONS"
+            setTextColor(0xFF6E665B.toInt())
+            textSize = 10f
+            letterSpacing = 0.15f
+            typeface = Typeface.MONOSPACE
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        pill.addView(TextView(this).apply {
-            text = b.title.substringAfterLast(" · ")
-            setTextColor(Roost.TEXT)
-            textSize = 13f
-            // Do not truncate — allow the label to wrap to a second line.
-            maxLines = 2
-            setPadding(dp(8f), 0, 0, 0)
-        })
-        return pill
+        zone.addView(head)
+
+        // One zone-wide density (SPEC-0002). RICH is a 2-column card grid; SLIM/REGULAR a vertical list.
+        // Gap between rows: 5dp SLIM, 9dp REGULAR, 10dp RICH — the first item hugs the header.
+        if (density == ActionDensity.RICH) {
+            buttons.chunked(2).forEachIndexed { rowIndex, pair ->
+                val gridRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = if (rowIndex == 0) 0 else dp(10f) }
+                }
+                pair.forEachIndexed { col, b ->
+                    // Paired cells use MATCH_PARENT height so both take the row's tallest height (a
+                    // horizontal LinearLayout re-measures MATCH_PARENT children to the max), aligning a
+                    // card with a host line next to a shorter shortcut card; the RICH card's internal
+                    // weighted spacer absorbs the slack, keeping the status pinned to the bottom. A LONE
+                    // tile (odd count) has no real sibling to match — only the 1px spacer below — so
+                    // MATCH_PARENT would re-measure it down to ~1px and collapse it; use WRAP_CONTENT there.
+                    val cellHeight = if (pair.size == 1) ViewGroup.LayoutParams.WRAP_CONTENT
+                                     else ViewGroup.LayoutParams.MATCH_PARENT
+                    gridRow.addView(buildActionTile(b, density), LinearLayout.LayoutParams(
+                        0, cellHeight, 1f
+                    ).apply { if (col > 0) leftMargin = dp(10f) })
+                }
+                // A lone last tile takes one column; a weighted spacer keeps it half-width.
+                if (pair.size == 1) gridRow.addView(View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, 1, 1f).apply { leftMargin = dp(10f) }
+                })
+                zone.addView(gridRow)
+            }
+        } else {
+            val gap = if (density == ActionDensity.SLIM) dp(5f) else dp(9f)
+            buttons.forEachIndexed { i, b ->
+                zone.addView(buildActionTile(b, density), LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = if (i == 0) 0 else gap })
+            }
+        }
+        return zone
     }
 
+    /** Build one configured action tile (bind + delete-menu) for the given [density]. */
+    private fun buildActionTile(b: ActionButton, density: ActionDensity): ActionTileView {
+        val http = if (b.kind == ActionKind.HTTP) Prefs.httpAction(this, b.a) else null
+        val isTask = http != null && HttpActionClient.hostOf(http.url).contains("switchboard")
+        val host = http?.let { HttpActionClient.hostOf(it.url) } ?: ""
+        val override = overrideIcon(b.key)
+        // Tint only monochrome glyphs with the accent: a picked/synced override iff it's a mono slug icon
+        // (Simple Icons / Heroicons), else the built-in ic_scene glyph on HTTP / HASS_SCENE. Full-color
+        // launcher icons (SHORTCUT), selfh.st logos, and picked full-color overrides render untinted. (Fix 3.)
+        val tintIcon = if (override != null) Prefs.iconOverrideIsMono(this, b.key)
+                       else b.kind != ActionKind.SHORTCUT
+        // SHORTCUT tiles read "<shortcut> in <App>" (e.g. "New tab in Firefox"); other kinds use their title.
+        val tileTitle = if (b.kind == ActionKind.SHORTCUT) ShortcutProvider.displayTitle(b, appLabel(b.a))
+                        else b.title
+        val tile = ActionTileView(this, accent).apply {
+            bind(
+                title = tileTitle,
+                idleIcon = override ?: actionIcon(b),
+                isTask = isTask,
+                host = host,
+                method = http?.method ?: "",
+                density = density,
+                tintIdleIcon = tintIcon
+            )
+            onFire = { invokeAction(b, this) }
+        }
+        // Deleting an HTTP action removes its definition + secret too (not just the button),
+        // mirroring how removing a HASS account cleans up its scenes. Long-press → Edit (HTTP only)
+        // reopens the builder with this action loaded (owner feedback).
+        tileMenu(tile, b.key, editHttpId = if (b.kind == ActionKind.HTTP) b.a else null) {
+            if (b.kind == ActionKind.HTTP) Prefs.removeHttpAction(this, b.a)
+            else Prefs.setActionEnabled(this, b, false)
+        }
+        return tile
+    }
+
+    // Governing: ADR-0002 (pluggable action-button providers), SPEC-0002 REQ "General HTTP-action definition"
     private fun actionIcon(b: ActionButton): Drawable? = when (b.kind) {
         ActionKind.SHORTCUT -> ShortcutProvider.icon(this, b.a, b.b) ?: appIcon(b.a)
         ActionKind.HASS_SCENE ->
             try { resources.getDrawable(R.drawable.ic_scene, theme)?.mutate() } catch (e: Exception) { null }
+        ActionKind.HTTP ->
+            try { resources.getDrawable(R.drawable.ic_scene, theme)?.mutate() } catch (e: Exception) { null }
     }
 
-    // Governing: ADR-0002 (pluggable action-button providers), SPEC-0001 REQ "Threading and error handling"
-    private fun invokeAction(b: ActionButton) {
+    // Drives the tapped tile's on-tile state machine instead of a Toast (ADR-0004). All network runs
+    // off-thread; results marshal back with runOnUiThread.
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Threading and error handling"
+    private fun invokeAction(b: ActionButton, tile: ActionTileView) {
+        if (tile.isPending()) return
         when (b.kind) {
-            ActionKind.SHORTCUT ->
-                if (!ShortcutProvider.invoke(this, b.a, b.b)) {
-                    Toast.makeText(this, getString(R.string.action_failed, b.title), Toast.LENGTH_SHORT).show()
-                }
+            ActionKind.SHORTCUT -> {
+                // Fix 9: SHORTCUT launches synchronously (never PENDING) so isPending() can't debounce
+                // it — ignore a re-tap within the debounce window so a double-tap launches once.
+                val now = SystemClock.uptimeMillis()
+                if (now - lastShortcutFireAt < SHORTCUT_DEBOUNCE_MS) return
+                lastShortcutFireAt = now
+                if (ShortcutProvider.invoke(this, b.a, b.b)) tile.flashSuccess()
+                else tile.showError("ERROR", "couldn't start shortcut")
+            }
+
             ActionKind.HASS_SCENE -> {
                 val acct = Prefs.hassAccounts(this).find { it.id == b.a }
-                if (acct == null) {
-                    Toast.makeText(this, getString(R.string.action_failed, b.title), Toast.LENGTH_SHORT).show()
-                } else {
-                    Thread {
-                        val ok = runCatching { Hass.activateScene(acct, b.b) }.isSuccess
-                        runOnUiThread {
-                            val msg = if (ok) "✓ ${b.title.substringAfterLast(" · ")}"
-                            else getString(R.string.action_failed, b.title.substringAfterLast(" · "))
-                            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                if (acct == null) { tile.showError("ERROR", "account missing"); return }
+                tile.showPending()
+                Thread {
+                    val ok = runCatching { Hass.activateScene(acct, b.b) }.isSuccess
+                    runOnUiThread {
+                        // Fix 10: onResume→renderHome may have rebuilt tiles; don't touch a detached view.
+                        if (!tile.isAttachedToWindow) return@runOnUiThread
+                        if (ok) tile.showSuccess(200) else tile.showError("ERROR", "scene failed")
+                    }
+                }.start()
+            }
+
+            ActionKind.HTTP -> {
+                val action = Prefs.httpAction(this, b.a)
+                if (action == null) { tile.showError("ERROR", "definition missing"); return }
+                val secret = Prefs.httpSecret(this, b.a)
+                val vars = HttpActionClient.defaultVars(this)
+                tile.showPending()
+                Thread {
+                    val res = HttpActionClient.fire(action, secret, vars)
+                    runOnUiThread {
+                        // Fix 10: a background/return rebuilds tiles (renderHome); if this tile was
+                        // detached meanwhile, skip the update so it never touches a dead view.
+                        // (Full firing-state preservation across re-render is out of scope.)
+                        if (!tile.isAttachedToWindow) return@runOnUiThread
+                        when {
+                            res.timeout -> tile.showTimeout()
+                            res.ok && (tile.isTask || res.code == 202) -> tile.showQueued(res.code)
+                            res.ok -> tile.showSuccess(res.code)
+                            else -> tile.showError(
+                                if (res.code > 0) res.code.toString() else "ERROR",
+                                res.reason.ifBlank { "request failed" }
+                            )
                         }
-                    }.start()
-                }
+                    }
+                }.start()
             }
         }
     }
@@ -692,5 +1065,13 @@ class MainActivity : Activity() {
     companion object {
         private val WEB_ICON_TINT = 0xFFD6CDBF.toInt()
         private const val WIREGUARD_PKG = "com.wireguard.android"
+
+        // "Awake" presence tuning: >3 KB/s of combined traffic counts as activity; the mascot stays
+        // awake for ~6s after the last active tick so it reads as calm "working…", not a strobe.
+        private const val AWAKE_THRESHOLD = 3L * 1024L
+        private const val AWAKE_LINGER_MS = 6000L
+
+        // Ignore a second SHORTCUT invoke within this window (fast double-tap → launch once). (Fix 9.)
+        private const val SHORTCUT_DEBOUNCE_MS = 600L
     }
 }

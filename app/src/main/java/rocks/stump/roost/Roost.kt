@@ -27,6 +27,13 @@ object Roost {
 
     const val DEFAULT_ACCENT = 0xFFE7A44E.toInt() // Honey
 
+    // Fixed semantic ramp for the HTTP-action firing states. NON-themeable — these MUST NOT follow
+    // the accent, so "failed" stays red even when the accent is red-ish.
+    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "On-tile firing state machine"
+    const val SAGE = 0xFF93B98C.toInt()  // success / queued
+    const val AMBER = 0xFFD98F3C.toInt() // timeout
+    const val CLAY = 0xFFCF6B5A.toInt()  // error
+
     /** Themeable accent options offered in Settings. */
     val ACCENTS: List<Pair<String, Int>> = listOf(
         "Honey" to 0xFFE7A44E.toInt(),
