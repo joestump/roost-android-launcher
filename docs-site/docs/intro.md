@@ -16,7 +16,7 @@ client when you need to bring a tunnel up.
 It's **a few thousand lines of pure Android framework Kotlin** — no AndroidX, no Compose, no Material, no
 raster assets, no bundled fonts. Deliberately hackable.
 
-<img src="/roost-android-launcher/img/home.png" alt="The Roost home: mascot, greeting, a Sage VPN chip, the featured-agent hero card, a utility grid, and the Actions zone" width="320" />
+<img src="/roost-android-launcher/img/home.png" alt="The Roost home: mascot, a live greeting, a Sage VPN chip, the accent-tinted featured-agent hero card, an All / Apps / Web / Shortcuts / HTTP filter chip row, and a uniform grid of app tiles ending in a Store tile" width="320" />
 
 ## The idea
 
@@ -33,16 +33,19 @@ at any agent app in Settings.
 ## What it does
 
 - **Boots into your agent** on power-up.
-- **Curated home**: a robot mascot with a live greeting, a **Sage-green VPN chip** showing live ↓/↑ rates, a
-  full-width **hero card** for the featured agent, a utility grid, and — once you add any — an **Actions
-  zone**.
+- **Curated home**: a robot mascot with a live greeting, a **Sage-green VPN chip** showing live ↓/↑ rates, an
+  accent-tinted full-width **hero card** for the featured agent, then **one uniform grid of tiles** —
+  favorite apps, web apps, app shortcuts, Home Assistant scenes, and HTTP actions all render as the same
+  tile, with a **filter chip row** to narrow by kind and a **per-kind tagline** on each.
 - **HTTP Action tiles**: a home tile that fires a user-defined HTTP request (method, URL, headers, an auth
   scheme, and a `{{var}}` JSON body) and tells you how it went **right on the tile** — firing → done /
   accepted / error. [Read more](./http-actions.md).
 - **Synced Actions**: an agent can provision action buttons by dropping `actions.d/*.json` files into a
   folder that syncs to the phone — write a file, the button appears. [Read more](./synced-actions.md).
-- **Three Actions-zone densities**: the Actions zone reshapes between a slim list, a regular card stack,
+- **One tile density for the whole home**: every tile reshapes together between a slim list, regular cards,
   and a rich two-column grid — set in Settings → Appearance.
+- **Filter by kind**: a chip row on the home (`All` plus one chip per kind present — Apps / Web / Shortcuts /
+  HTTP / Scenes) narrows the tiles; choose which chips appear under Settings → Appearance.
 - **Appliance mode**: an ambient "at rest" face; long-press reveals the grid.
 - **Redesigned Settings**: a calm landing that drills into per-category screens, with searchable **app
   pickers** for the featured agent and Favorites. [Read more](./settings.md).

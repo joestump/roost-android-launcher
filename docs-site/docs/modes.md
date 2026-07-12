@@ -10,17 +10,23 @@ Roost has two home behaviors, switchable in **Settings → Home & Behavior → H
 ## Curated
 
 Pressing Home shows the full home surface: the robot **mascot**, a live **greeting**, a Sage-green **VPN
-chip**, a full-width **hero card** for the **featured agent**, then your **utility apps**, your **web apps**,
-and an **Add** tile. When you've enabled any [HTTP action tiles](./http-actions.md), an **Actions zone**
-appears below the grid. Tapping the mascot or the hero card opens your agent. On boot, the agent app is
-foregrounded once — optionally behind a [waking-up sequence](./design.md#waking-up).
+chip**, an accent-tinted full-width **hero card** for the **featured agent**, then **one uniform grid of
+tiles**. Everything except the hero is the same tile — favorite apps, web apps, app shortcuts, Home Assistant
+scenes, and [HTTP actions](./http-actions.md) — with a **Store** tile at the tail for adding more. A **filter
+chip row** above the grid (`All`, plus a chip per kind present — Apps / Web / Shortcuts / HTTP / Scenes)
+narrows the tiles, and each tile carries a **per-kind tagline**: a web tile shows its host, an HTTP tile
+`METHOD · host`, a shortcut "shortcut", an app just its name. Tapping the mascot or the hero card opens your
+agent. On boot, the agent app is foregrounded once — optionally behind a
+[waking-up sequence](./design.md#waking-up).
+
+<img src="/roost-android-launcher/img/home-filtered.png" alt="The home filtered to the Shortcuts kind — the Shortcuts chip active, and every tile an app shortcut tagged 'shortcut' (Joe in Signal, New tab in Firefox, Wi-Fi in Settings, and more)" width="320" />
 
 This is the relaxed default — a normal launcher that happens to be built around one agent.
 
 ## Appliance
 
 Pressing Home shows a minimal **ambient "at rest" face** — just the mascot and greeting, like a robot's
-idle dock screen. A **long-press anywhere** reveals the utility grid for that visit only (it re-hides when
+idle dock screen. A **long-press anywhere** reveals the tile grid for that visit only (it re-hides when
 you leave). On boot, the agent app is foregrounded once.
 
 This is the "dedicated appliance" feel — the utilities are deliberately out of the way.
@@ -39,10 +45,12 @@ live:
 | **Restart agent app** | Bounce the agent app cleanly when it needs a fresh start. |
 | **Auto-launch agent on boot** | Foreground the agent app once after boot. |
 | **Keep screen on while docked** | Hold Roost's window awake (pair with the `stay_on_while_plugged_in` global for a true always-on dock). |
-| **Accent tint** | Honey, Slate, Sage, or Violet — recolors the mascot eyes, chips, glows, the Add tile, and monochrome action-tile icon glyphs live (full-color icons and health colors stay fixed). |
-| **Favorites** | Which installed apps appear on the grid — a searchable **app picker**. |
-| **Web Apps** | Add a name + URL that opens **fullscreen in a WebView** — self-host a Homarr / Homepage dashboard as an app tile. `https://` is auto-prefixed. |
-| **Action Buttons** | Enable [HTTP action tiles](./http-actions.md) for the Actions zone, and manage Home Assistant accounts. |
+| **Accent tint** | Honey, Slate, Sage, or Violet — recolors the mascot eyes, chips, glows, the Store tile, and monochrome tile icon glyphs live (full-color icons and health colors stay fixed). |
+| **Action density** | How every home tile renders — a Slim list, Regular cards, or a Rich two-column grid. One home-wide setting; every tile reshapes together. |
+| **Launcher filters** | Which per-kind filter chips (Apps / Web / Shortcuts / HTTP / Scenes) can appear above the tiles on the home. |
+| **Favorites** | Which installed apps appear on the grid — a searchable **app picker**. They surface as `APP` tiles and are now manually orderable alongside everything else. |
+| **Web Apps** | Add a name + URL that opens **fullscreen in a WebView** — self-host a Homarr / Homepage dashboard as a tile. `https://` is auto-prefixed. |
+| **Action Buttons** | Enable [HTTP action tiles](./http-actions.md) for the home grid, and manage Home Assistant accounts. |
 | **Match wallpaper to Roost** | Paint a matching dock-dark wallpaper so Recents and app transitions stay on-theme. |
 
 The mono status line and greeting update **live** from a battery-change receiver, so charging state and %

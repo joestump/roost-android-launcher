@@ -26,7 +26,7 @@ its own detail screen, plus a shortcut out to the OS:
 | --- | --- |
 | **Home & Behavior** | Home mode (Curated / Appliance), auto-launch agent on boot, keep screen on while docked, bandwidth heartbeat. |
 | **Agent** | Agent name, the featured-agent app picker, and **Restart Agent App**. |
-| **Appearance** | Accent tint (Honey / Slate / Sage / Violet), match wallpaper to Roost. |
+| **Appearance** | Accent tint (Honey / Slate / Sage / Violet), **Action density** for the whole home, **Launcher filters**, match wallpaper to Roost. |
 | **Apps, Tiles & Content** | Favorites (an app picker), Web Apps, Action Buttons, Hidden Items. |
 | **Network** | WireGuard tunnel + a remote-control note. |
 | **Open Android System Settings** | Jump straight to the OS Settings. |
@@ -49,29 +49,45 @@ the picker, and adds a **Restart Agent App** control for when the agent needs a 
 **Favorites** is the same picker idea as a searchable grid — tap to add or remove an app from the home
 surface, no package strings anywhere.
 
+## Appearance
+
+Beyond the accent tint, **Appearance** holds the two controls that shape the whole home tile grid:
+
+<img src="/roost-android-launcher/img/launcher-filters.png" alt="The Appearance screen — accent-tint swatches, an Action density Slim / Regular / Rich control set to Rich, and a Launcher filters section with Apps / Web / Shortcuts / HTTP / Scenes toggles all on" width="320" />
+
+- **Action density** — how every home tile renders: a **Slim** list, **Regular** cards, or a **Rich**
+  two-column grid. It's **one home-wide setting**, so apps, web apps, shortcuts, scenes, and
+  [HTTP actions](./http-actions.md) all reshape together — see [density](./http-actions.md#density) for the
+  three layouts.
+- **Launcher filters** — a toggle per kind (Apps / Web / Shortcuts / HTTP / Scenes) that chooses which
+  **filter chips** can appear above the tiles on the home. The home then shows `All` plus a chip for each
+  enabled kind that's currently present, so you can narrow the grid to just apps, just HTTP actions, and so
+  on. The active filter persists between visits.
+
 ## Action Buttons
 
 Under **Apps, Tiles & Content → Action Buttons** is itself a **landing** that splits into focused
 sub-screens, one per authoring path:
 
-<img src="/roost-android-launcher/img/settings-actions.png" alt="The Action Buttons landing — rows for HTTP Actions, Home Assistant, App Shortcuts, Synced Actions, and Arrange Action Buttons" width="320" />
+<img src="/roost-android-launcher/img/settings-actions.png" alt="The Action Buttons landing — rows for HTTP Actions, Home Assistant, App Shortcuts, Synced Actions, and Arrange Tiles" width="320" />
 
 | Sub-screen | What's inside |
 | --- | --- |
 | **HTTP Actions** | The list of [HTTP action tiles](./http-actions.md) with a **New action** entry (into the builder / endpoints picker) and a per-action **enabled** toggle. Each action shows the **icon you chose** in the builder, not a generic glyph, so the list reads at a glance. |
 | **Home Assistant** | The Home Assistant account form — now just one authoring path that produces an HTTP action. |
 | **App Shortcuts** | Android app-shortcut buttons — enable launcher shortcuts as action tiles. Each tile is titled **`<shortcut> in <App>`** — e.g. "New tab in Firefox", "Video in Camera", "Wi-Fi in Settings" — instead of a bare label. |
-| **Arrange Action Buttons** | **Toggle each button on/off and drag to reorder.** A per-row switch shows or hides the button on the home Actions zone without deleting it — it reflects the button's home visibility and also clears a long-press **Hide**. Long-press a row's **handle** to drag it into the order the buttons appear on home. |
+| **Arrange Tiles** | **A flat on/off + drag-to-reorder list over every tile — apps, web apps, shortcuts, scenes, and HTTP actions together, no section grouping.** A per-row switch shows or hides the tile on the home without deleting it — it reflects the tile's home visibility and also clears a long-press **Hide**. Long-press a row's **handle** to drag it into the order the tiles appear on home. |
 | **Synced Actions** | Grant a folder and import agent-authored actions from `actions.d/*.json`. [Read more](./synced-actions.md). |
 
-On **Arrange Action Buttons**, each button is a drag-handle row with an on/off switch — flip one off to
-hide it from home (dimmed here), or long-press the handle to drag the order:
+On **Arrange Tiles**, every tile — apps, web apps, shortcuts, scenes, and HTTP actions in one flat list, with
+no section headers — is a drag-handle row with an on/off switch: flip one off to hide it from home (dimmed
+here), or long-press the handle to drag the order:
 
-<img src="/roost-android-launcher/img/arrange-action-buttons.png" alt="The Arrange Action Buttons screen — each button a drag-handle row with an on/off switch; two are toggled off and dimmed, the rest on" width="320" />
+<img src="/roost-android-launcher/img/arrange-action-buttons.png" alt="The Arrange Tiles screen — every tile a drag-handle row with an on/off switch; two are toggled off and dimmed, the rest on" width="320" />
 
-**Editing from home.** Long-press an action tile on the home Actions zone for its controls — **Edit**
-(opens the [HTTP-action builder](./http-actions.md#the-builder)) plus **hide**, **delete**, and **change
-icon** — so you can tweak a tile without coming back into Settings.
+**Editing from home.** Long-press a fire tile — an [HTTP action](./http-actions.md) or Home Assistant scene —
+on the home for its controls: **Edit** (opens the [HTTP-action builder](./http-actions.md#the-builder)) plus
+**hide**, **delete**, and **change icon** — so you can tweak a tile without coming back into Settings.
 
 The deep configuration — the HTTP-action builder, the endpoints picker, the icon picker — stays bespoke; the
 navigation around it is uniform.

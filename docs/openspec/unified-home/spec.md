@@ -83,29 +83,17 @@ alphabetical, then the Actions order) so the home is visually unchanged.
 - **WHEN** the owner arranges tiles (including apps) and later returns home
 - **THEN** the saved order MUST be preserved, and a newly favorited app MUST append (not reshuffle the rest)
 
-### Requirement: One layout orders every tile
-
-`Prefs.tileLayout` (an ordered list of tile keys) MUST be the single order authority across all providers and
-stored actions, generalizing the `action_buttons` order and replacing the alphabetical favorites order.
-Reconciliation MUST preserve existing order and append newly-appearing tiles into their default section; it
-MUST NOT reshuffle on every render. On first run the layout MUST be seeded from the current arrangement
-(favorites alphabetical, then the Actions order) so the home is visually unchanged.
-
-#### Scenario: Order is stable and manual
-
-- **WHEN** the owner arranges tiles (including apps) and later returns home
-- **THEN** the saved order MUST be preserved, and a newly favorited app MUST append (not reshuffle the rest)
-
 ### Requirement: Arrange, enable/disable, hide, and icon apply to every tile
 
-The Arrange Action Buttons screen MUST let the owner reorder tiles across sections, move a tile between
-sections, and toggle any tile on/off; `disabled_action_keys`, `hidden_items`, and icon overrides (keyed by
-`ActionButton.key`) MUST apply uniformly to `APP`/`WEB` tiles as they do to action tiles.
+The "Arrange Tiles" screen MUST be a flat (no-section) list that lets the owner reorder any tile and toggle
+any tile on/off; `disabled_action_keys`, `hidden_items`, and icon overrides (keyed by `ActionButton.key`) MUST
+apply uniformly to `APP`/`WEB` tiles as they do to action tiles. A reorder MUST merge into the stored
+`tileLayout` so a tile that is transiently unavailable (not rendered) keeps its saved position.
 
 #### Scenario: An app can be disabled from Arrange
 
 - **WHEN** the owner flips an `APP` tile off in Arrange
-- **THEN** it MUST disappear from the home Apps section and MUST re-appear when flipped back on
+- **THEN** it MUST disappear from the home and MUST re-appear when flipped back on
 
 ### Requirement: The featured agent stays special
 
