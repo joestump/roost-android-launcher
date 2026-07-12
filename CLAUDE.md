@@ -38,9 +38,16 @@ Read these before making architectural changes. Current set:
   Roost reconciles them into `ActionKind.HTTP` actions on resume — declarative (upsert + remove-on-missing),
   scoped to a tracked synced-id set so manual actions are never touched. Framework-only via
   `DocumentsContract` + `ContentResolver` + `org.json`. Governs SPEC-0003.
+- **ADR-0007 — Unified tile model (proposed).** Apps, web apps, and action buttons are all one
+  `ActionButton` grid: adds `ActionKind.APP` + `ActionKind.WEB` and `FavoritesProvider`/`WebProvider` (reading
+  the existing `Prefs.favorites`/`Prefs.webApps`, no migration); a **section** property groups the home and a
+  single **layout** orders every tile; sections declare a presentation (GRID vs density TILES); launch kinds
+  (APP/WEB/SHORTCUT) stay quiet while fire kinds (HTTP/HASS) keep the on-tile state machine; the featured agent
+  stays a distinct accent-tinted hero. Extends ADR-0002/0004/0005. Governs SPEC-0004.
 - **SPEC-0001 — Action Buttons** (`docs/openspec/action-buttons/`).
 - **SPEC-0002 — HTTP Actions** (`docs/openspec/http-actions/`).
 - **SPEC-0003 — Synced Actions** (`docs/openspec/synced-actions/`).
+- **SPEC-0004 — Unified Home Layout** (`docs/openspec/unified-home/`).
 
 When implementing code governed by an artifact, leave a governing comment:
 `// Governing: ADR-0002 (pluggable action-button providers), SPEC-0001 REQ "Requirement Name"`.
