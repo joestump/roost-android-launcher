@@ -43,8 +43,13 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
 
     private var state = State.IDLE
     private var titleText = ""
+    // The per-tile subtitle line (a kind-specific tagline from the tile's metadata — a host, "scene",
+    // "shortcut", "METHOD · host", …). Stored in hostLine (the field name predates the uniform model).
     private var hostLine = ""
-    private var method = "POST"
+    // The IDLE status text for this tile (fire kinds carry "tap to fire" / "tap to run"; launch kinds
+    // pass ""), and whether the idle/success status line renders at all (false = a quiet launch tile).
+    private var idleStatus = "tap to fire"
+    private var showStatus = true
     private var density = ActionDensity.REGULAR
     private var errCode = ""
     private var errMsg = ""
@@ -57,7 +62,7 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
     private val disc = ActionDiscView(context).also { it.accent = accent }
     private val label = TextView(context)
     private val status = TextView(context)
-    private val hostLabel = TextView(context)      // RICH: the "METHOD · host" line under the label
+    private val hostLabel = TextView(context)      // RICH: the subtitle line under the label
     private val taskTag = TextView(context)
     private val chevron = ImageView(context)
     private val row = LinearLayout(context)
@@ -76,11 +81,11 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
 
         row.orientation = HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
-        row.isClickable = true
-        row.setOnClickListener { if (state != State.PENDING) onFire?.invoke() }
-        // The clickable inner row would otherwise swallow the long-press; forward it to this tile's
-        // own long-click listener (set by MainActivity.tileMenu) so long-press shows the Edit/Hide menu.
-        row.setOnLongClickListener { performLongClick() }
+        // The WHOLE card fires (not just the disc row): tapping anywhere on the tile invokes the action,
+        // and long-press bubbles to the card's own long-click listener (set by MainActivity.tileMenu).
+        // The inner row is left non-clickable so its taps fall through to the card.
+        isClickable = true
+        setOnClickListener { if (state != State.PENDING) onFire?.invoke() }
 
         // View identities are stable across densities (so the disc keeps its animation + the state
         // model is untouched); only sizes/typefaces/parents are re-applied per density in rebuildViews.
@@ -118,16 +123,21 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         applyState()
     }
 
-    /** One-time bind of the static content (title, idle glyph, task-ness, host, method) + [density].
-     *  [tintIdleIcon] is false for full-color app/shortcut icons + overrides so they aren't accent-washed. */
+    /** One-time bind of the static content (title, idle glyph, task-ness, subtitle) + [density].
+     *  [subtitle] is the kind-specific tagline shown under the label; [idleStatus] is the IDLE status
+     *  text; [showStatus] gates whether the idle/success status line renders (false → a quiet launch
+     *  tile with no status). [tintIdleIcon] is false for full-color app/shortcut icons + overrides so
+     *  they aren't accent-washed. */
     fun bind(
-        title: String, idleIcon: Drawable?, isTask: Boolean, host: String, method: String,
-        density: ActionDensity, tintIdleIcon: Boolean = true
+        title: String, idleIcon: Drawable?, isTask: Boolean, subtitle: String,
+        density: ActionDensity, idleStatus: String = "tap to fire", showStatus: Boolean = true,
+        tintIdleIcon: Boolean = true
     ) {
         this.titleText = title
         this.isTask = isTask
-        this.hostLine = host
-        this.method = method.ifBlank { "POST" }
+        this.hostLine = subtitle
+        this.idleStatus = idleStatus
+        this.showStatus = showStatus
         this.density = density
         label.text = title
         disc.idleIcon = idleIcon
@@ -170,9 +180,15 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         disc.layoutParams = LayoutParams(dp(24f), dp(24f))
         row.addView(disc)
 
+        labels.orientation = VERTICAL
         label.textSize = 13.5f
         label.typeface = Typeface.DEFAULT
-        row.addView(label, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(11f) })
+        labels.addView(label)
+        hostLabel.text = hostLine
+        hostLabel.visibility = if (hostLine.isBlank()) GONE else VISIBLE
+        hostLabel.setPadding(0, dp(1f), 0, 0)
+        labels.addView(hostLabel)
+        row.addView(labels, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(11f) })
 
         status.textSize = 9.5f
         status.setPadding(0, 0, 0, 0)
@@ -195,6 +211,11 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         label.textSize = 14.5f
         label.typeface = Roost.medium()
         labels.addView(label)
+        // Subtitle (metadata) line between title and the action line — all three lines on every tile.
+        hostLabel.text = hostLine
+        hostLabel.visibility = if (hostLine.isBlank()) GONE else VISIBLE
+        hostLabel.setPadding(0, dp(1f), 0, 0)
+        labels.addView(hostLabel)
         status.textSize = 10f
         status.setPadding(0, dp(2f), 0, 0)
         labels.addView(status)
@@ -210,10 +231,10 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
     }
 
     // RICH: a tall grid CARD (radius 17, per-state tint, min-height ~128dp). The tile IS the card here:
-    // a top row (42dp disc + a top-right "task" chip for durable tasks), then the label, then a
-    // "METHOD · host" line (HTTP only — omitted for shortcuts), then the mono status pinned to the
-    // bottom. Tapping in the error state re-fires ("tap to retry"); the inline expand panel is reserved
-    // for REGULAR (a grid cell has no room for it) — SLIM likewise carries no expand.
+    // a top row (42dp disc + a top-right "task" chip for durable tasks), then the label, then the
+    // per-kind subtitle line (blank → collapsed), then the mono status pinned to the bottom. Tapping in
+    // the error state re-fires ("tap to retry"); the inline expand panel is reserved for REGULAR (a grid
+    // cell has no room for it) — SLIM likewise carries no expand.
     private fun buildRich() {
         setPadding(dp(14f), dp(14f), dp(14f), dp(14f))
         minimumHeight = dp(128f)
@@ -234,15 +255,10 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         label.typeface = Roost.medium()
         addView(label, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
 
-        // "METHOD · host" line for HTTP actions; shortcuts (no host) reserve the line but hide its text
-        // (INVISIBLE, not GONE) so a shortcut card keeps the same natural height as an HTTP card beside
-        // it — rows stay even even before the grid's MATCH_PARENT height equalization kicks in.
-        hostLabel.text = when {
-            hostLine.isBlank() -> ""
-            method.isBlank() -> hostLine
-            else -> "${method.uppercase()} · $hostLine"
-        }
-        hostLabel.visibility = if (hostLine.isBlank()) INVISIBLE else VISIBLE
+        // The per-kind subtitle line. Now that every tile is uniform, a blank subtitle collapses (GONE)
+        // rather than reserving space — the grid's MATCH_PARENT height equalization keeps paired cards even.
+        hostLabel.text = hostLine
+        hostLabel.visibility = if (hostLine.isBlank()) GONE else VISIBLE
         addView(hostLabel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(3f)
         })
@@ -337,9 +353,14 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
             else -> accent
         }
 
+        // A quiet launch tile (showStatus=false) has no idle/success status line; only an actual fire
+        // event (pending/error/timeout — never reached by launch kinds) would surface one.
+        val fireState = state == State.PENDING || state == State.ERROR || state == State.TIMEOUT
+        val statusVisible = showStatus || fireState
+
         if (density == ActionDensity.SLIM) {
-            // SLIM: a terse mono code, always shown, coloured per state; the label stays TEXT (the card
-            // tint + the status carry the state read).
+            // SLIM: a terse mono code, coloured per state; the label stays TEXT (the card tint + the
+            // status carry the state read).
             val slimText = when (state) {
                 State.IDLE -> "ready"
                 State.PENDING -> "firing…"
@@ -355,11 +376,11 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
             }
             status.text = slimText
             status.setTextColor(slimColor)
-            status.visibility = VISIBLE
+            status.visibility = if (statusVisible) VISIBLE else GONE
             label.setTextColor(Roost.TEXT)
         } else {
             val (statusText, statusColor) = when (state) {
-                State.IDLE -> (if (isTask) "enqueue a durable task" else "tap to fire") to 0xFF8F8578.toInt()
+                State.IDLE -> (if (isTask) "enqueue a durable task" else idleStatus) to 0xFF8F8578.toInt()
                 State.PENDING -> "firing…" to accent
                 State.SUCCESS -> (flashText ?: "done · ${codeText(lastCode)}") to Roost.SAGE
                 State.QUEUED -> "queued · accepted" to Roost.SAGE
@@ -368,7 +389,7 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
             }
             status.text = statusText
             status.setTextColor(statusColor)
-            status.visibility = VISIBLE
+            status.visibility = if (statusVisible) VISIBLE else GONE
             label.setTextColor(Roost.TEXT)
         }
 
@@ -448,7 +469,7 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         })
         expandBox.addView(TextView(context).apply {
             // The request preview — auth is shown only as a mask (never the secret). SPEC-0002.
-            text = "${method.uppercase()} ${hostLine.ifBlank { "endpoint" }} · Authorization: ••••••"
+            text = "${hostLine.ifBlank { "endpoint" }} · Authorization: ••••••"
             setTextColor(0xFF6E665B.toInt())
             textSize = 11f
             typeface = Typeface.MONOSPACE

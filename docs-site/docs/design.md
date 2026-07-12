@@ -38,8 +38,8 @@ A warm neutral base with **one themeable accent**.
 | **Accent** | `#E7A44E` | **Themeable** (Honey default) |
 
 The accent is owner-selectable in Settings — **Honey**, **Slate** (`#7FA6C9`), **Sage** (`#93B98C`), or
-**Violet** (`#B79BE0`) — and recolors the mascot eyes, chips, glows, and the Add tile live. It also tints
-**monochrome icon glyphs** (Simple Icons, Heroicons) on action tiles, so they match the theme; full-color
+**Violet** (`#B79BE0`) — and recolors the mascot eyes, chips, glows, and the Store tile live. It also tints
+**monochrome icon glyphs** (Simple Icons, Heroicons) on tiles, so they match the theme; full-color
 icons — app and shortcut launcher icons, selfh.st logos — keep their real colors.
 
 ### Health colors — a fixed semantic ramp
@@ -73,24 +73,39 @@ the home surface: the agent app's **real icon** and **name** (pulled at render t
 `PackageManager`), with a small **FEATURED** pill. It reads as *this device belongs to this agent* without
 Roost borrowing anyone's brand — the branding is the installed app's own.
 
+Its card background is **accent-tinted** — a soft wash of your chosen accent — so the hero sits visibly apart
+from the uniform tile grid below it. It's the one surface on the home that *isn't* just another tile, and the
+tint says so.
+
 ## The VPN chip
 
 A small persistent chip shows the tunnel's live **↓/↑ rates**. When a tunnel is up it turns **Sage-green**
 (`#93B98C`) — a calm "connected" signal that sits apart from the themeable accent — while still ticking the
 real transfer rates. It's a status readout, not a launcher tile.
 
-## The Actions zone
+## The tile grid
 
-Below the app grid is a dedicated **Actions zone** for [HTTP action tiles](./http-actions.md) — controls
-that *do a thing* rather than *launch an app*. The rule is **no actions → no zone**: it only appears when at
-least one action is enabled, so a bare home stays bare.
+Below the hero card, everything else on the home is **one uniform grid of tiles**. Favorite apps, web apps,
+app shortcuts, Home Assistant scenes, and [HTTP actions](./http-actions.md) all render as the *same* tile —
+no app-grid-vs-actions split, no section headers — with a **Store** tile at the tail for adding more. This is
+[ADR-0007](https://gitea.stump.rocks/joestump/roost-android-launcher/src/branch/main/docs/adrs/ADR-0007-unified-tile-model.md),
+formalized in [SPEC-0004](https://gitea.stump.rocks/joestump/roost-android-launcher/src/branch/main/docs/openspec/unified-home/spec.md):
+apps and web apps become `ActionButton`s through two read-only providers over the existing Favorites and
+Web-Apps stores, ordered with everything else by a single layout — no config migration, and favorites are now
+manually orderable too.
 
 Its **[density](./http-actions.md#density) is owner-selectable** — slim list, regular cards, or a rich
-two-column grid, set in Settings → Appearance — but all three densities share the same firing state machine
-and the fixed semantic ramp below, so only the layout changes, never the meaning of an outcome.
+two-column grid, set in Settings → Appearance — and it's **home-wide**: every tile reshapes together.
 
-An action tile reports its whole firing lifecycle **on the tile itself** — no Toast, no popup you might miss
-from across a dim room. It's a small `Canvas` disc driven by a `Handler` tick through a state machine:
+Each tile carries a **per-kind tagline** so it reads at a glance: a web tile shows its host, an HTTP tile
+`METHOD · host`, a shortcut "shortcut", an app just its name. A **filter chip row** — `All` plus a chip for
+each kind present (Apps / Web / Shortcuts / HTTP / Scenes) — narrows the grid to a single kind; the active
+filter persists, and which chips can appear is set under **Launcher filters** in Settings → Appearance.
+
+**Launch tiles stay quiet; fire tiles report.** Tapping an app, web app, or shortcut just opens it — no
+status line, no "tap to fire". Only **fire tiles** ([HTTP actions](./http-actions.md) and Home Assistant
+scenes) report their whole firing lifecycle **on the tile itself** — no Toast, no popup you might miss from
+across a dim room. It's a small `Canvas` disc driven by a `Handler` tick through a state machine:
 
 - **idle** — resting.
 - **pending** — a sweeping accent ring and "firing…" while the request is in flight; further taps are

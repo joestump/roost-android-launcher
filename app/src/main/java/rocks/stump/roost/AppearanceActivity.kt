@@ -33,7 +33,22 @@ class AppearanceActivity : SettingsScreen() {
             Prefs.setActionDensity(this, densities[i])
             rebuild()
         })
-        body.addView(hint("How the home Actions zone renders its tiles."))
+        body.addView(hint("How the home renders its tiles."))
+
+        // --- Launcher filters (which type-filter chips the home offers above the tiles) — ADR-0007 ---
+        // One toggle per ActionKind: ON = its chip is offered on the launcher (when tiles of that kind
+        // exist), OFF = the chip is suppressed. Bound to Prefs.hiddenFilterKinds (on = NOT hidden).
+        body.addView(sectionHeader("Launcher filters"))
+        val filterKinds = listOf(
+            ActionKind.APP, ActionKind.WEB, ActionKind.SHORTCUT, ActionKind.HTTP, ActionKind.HASS_SCENE
+        )
+        val hiddenKinds = Prefs.hiddenFilterKinds(this)
+        body.addView(card(filterKinds.map { kind ->
+            toggleRow(kind.filterLabel(), "", kind.name !in hiddenKinds) { checked ->
+                Prefs.setFilterKindHidden(this, kind, !checked)
+            }
+        }))
+        body.addView(hint("Choose which type filters can appear above your tiles on the home screen."))
 
         // --- Wallpaper ---
         // No manual "apply" button anymore: choosing an accent above already repaints the matching dock

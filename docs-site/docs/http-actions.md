@@ -11,8 +11,8 @@ scene, poke a webhook, nudge a self-hosted service. Rather than a bespoke button
 primitive: the **HTTP action tile**.
 
 An HTTP action is a universal "does a thing" home tile. You define the request once in a builder; the tile
-lives in the [Actions zone](./design.md#the-actions-zone) below the app grid and fires it on tap — and it
-tells you how it went **right on the tile**.
+lives among the [home tiles](./design.md#the-tile-grid) — the same uniform tile as your apps, web apps, and
+shortcuts — and fires it on tap, telling you how it went **right on the tile**.
 
 This realizes [ADR-0004](https://gitea.stump.rocks/joestump/roost-android-launcher/src/branch/main/docs/adrs/ADR-0004-generalized-http-action-provider.md)
 and is formalized in [SPEC-0002](https://gitea.stump.rocks/joestump/roost-android-launcher/src/branch/main/docs/openspec/http-actions/spec.md).
@@ -108,25 +108,31 @@ enabled **keep rendering and firing unchanged** — nothing to migrate by hand.
 
 ## Density
 
-The Actions zone comes in three display **densities**, so a shelf of many actions and a two-tile hero
-dock can each look right. Set the density in [**Settings → Appearance**](./settings.md) ("Action density",
-default **Regular**). All three share the same [on-tile state machine](#the-on-tile-state-machine) and the
-fixed Sage/Amber/Clay ramp — only the layout changes.
+The **whole home** renders at one of three display **densities**, so a shelf of many tiles and a two-tile
+hero dock can each look right. Set it in [**Settings → Appearance**](./settings.md) ("Action density",
+default **Regular**) — it's home-wide, so apps, web apps, shortcuts, scenes, and HTTP actions all reshape
+together. All three share the same [on-tile state machine](#the-on-tile-state-machine) (on fire tiles) and
+the fixed Sage/Amber/Clay ramp — only the layout changes.
+
+Each tile also carries a **per-kind tagline** so it reads at a glance: a web tile shows its host, an HTTP
+tile `METHOD · host`, a shortcut "shortcut", an app just its name. The idle→firing status line appears only
+on **fire tiles** (HTTP actions and Home Assistant scenes); launch tiles (apps, web, shortcuts) never show
+"tap to fire".
 
 <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start">
-  <img src="/roost-android-launcher/img/density-slim.png" alt="Slim density — a compact list of small disc + label cards with a terse right-aligned status" width="220" />
-  <img src="/roost-android-launcher/img/density-regular.png" alt="Regular density — a card per action with disc, label, and a full status line under it" width="220" />
-  <img src="/roost-android-launcher/img/density-rich.png" alt="Rich density — a two-column card grid with a big disc, label, a METHOD · host line, and the status" width="220" />
+  <img src="/roost-android-launcher/img/density-slim.png" alt="Slim density — a compact list of small disc + label tiles with a terse right-aligned status on fire tiles" width="220" />
+  <img src="/roost-android-launcher/img/density-regular.png" alt="Regular density — a card per tile with disc, label, the per-kind tagline, and a full status line under fire tiles" width="220" />
+  <img src="/roost-android-launcher/img/density-rich.png" alt="Rich density — a two-column card grid with a big disc, label, a METHOD · host tagline, and the fire status" width="220" />
 </div>
 
-- **Slim** — a dense list of compact cards: a small disc + label with a terse right-aligned status
-  (`ready` / `firing…` / `200 OK` / `502`). The most actions in the least height — best for a shelf with
-  many.
-- **Regular** (the default) — a card per action: disc + label + a full status line beneath it, plus a
-  `task` tag on durable-task actions. The balanced middle — best for three to six actions.
-- **Rich** — a two-column card grid: a big disc, label, a `METHOD · host` line for HTTP actions, and the
-  status. The icon sits left-justified with the card's text, with balanced top and bottom padding. Legible
-  across a dim room — best for two to four hero actions on a docked idle face.
+- **Slim** — a dense list of compact cards: a small disc + label with a terse right-aligned status on fire
+  tiles (`ready` / `firing…` / `200 OK` / `502`). The most tiles in the least height — best for a busy home.
+- **Regular** (the default) — a card per tile: disc + label + the per-kind tagline, with a full status line
+  beneath fire tiles and a `task` tag on durable-task actions. The balanced middle.
+- **Rich** — a two-column card grid: a big disc, label, the per-kind tagline (`METHOD · host` for HTTP, the
+  host for web, "shortcut" for a shortcut), and the fire status. The icon sits left-justified with the card's
+  text, with balanced top and bottom padding. Legible across a dim room — best for a short, hero-style home
+  on a docked idle face.
 
 ## Framework-only, of course
 

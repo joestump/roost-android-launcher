@@ -12,7 +12,7 @@ import android.widget.LinearLayout
  *  1. HTTP actions  → [HttpActionsActivity] — saved HTTP actions + "New action → builder".
  *  2. Home Assistant → [HassActivity] — connected accounts + add-account form + per-account scenes.
  *  3. App shortcuts → [ShortcutsActivity] — scan apps + enable the ones you want as buttons.
- *  4. Arrange Action Buttons → [ArrangeActivity] — toggle buttons on/off and long-press-drag their home order.
+ *  4. Arrange Tiles → [ArrangeActivity] — toggle any home tile on/off and long-press-drag their home order.
  *
  * Each provider screen toggles its own membership; the cross-type ORDER lives on the Arrange screen (the
  * old combined "Enabled buttons" drag list is gone). Nothing that used to be reachable was dropped.
@@ -57,10 +57,10 @@ class ActionsActivity : SettingsScreen() {
                 if (syncedGranted) syncedIds.toString() else null) {
                 startActivity(Intent(this, SyncedActionsActivity::class.java))
             },
-            navRow(R.drawable.ic_drag_handle, "Arrange Action Buttons", "Enable, disable, and reorder", enabledCount) {
+            navRow(R.drawable.ic_drag_handle, "Arrange Tiles", "Enable, disable, and reorder", enabledCount) {
                 startActivity(Intent(this, ArrangeActivity::class.java))
             }
         ))
-        body.addView(hint("Each type enables its own buttons; “Arrange Action Buttons” toggles them on or off and sets their order in the home Actions zone."))
+        body.addView(hint("Each type enables its own buttons; “Arrange Tiles” toggles every home tile on or off and sets their order on the home screen."))
     }
 }
