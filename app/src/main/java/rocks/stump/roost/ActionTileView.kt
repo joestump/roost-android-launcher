@@ -46,9 +46,13 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
     // The per-tile subtitle line (a kind-specific tagline from the tile's metadata — a host, "scene",
     // "shortcut", "METHOD · host", …). Stored in hostLine (the field name predates the uniform model).
     private var hostLine = ""
-    // The IDLE status text for this tile (fire kinds carry "tap to fire" / "tap to run"; launch kinds
-    // pass ""), and whether the idle/success status line renders at all (false = a quiet launch tile).
+    // The IDLE status text — the action line shown on every tile: fire kinds carry "tap to fire",
+    // launch kinds their verb ("tap to open" / "tap to run"). SLIM shows a terse fire state ("ready")
+    // instead, but only for fire kinds; launch kinds keep their verb (owner: v0.9.1).
     private var idleStatus = "tap to fire"
+    // Whether this tile fires (HTTP / HASS_SCENE) vs. launches (APP / WEB / SHORTCUT). Drives SLIM's
+    // terse IDLE wording: fire → "ready", launch → the action verb.
+    private var isFireKind = true
     private var showStatus = true
     private var density = ActionDensity.REGULAR
     private var errCode = ""
@@ -124,20 +128,22 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
     }
 
     /** One-time bind of the static content (title, idle glyph, task-ness, subtitle) + [density].
-     *  [subtitle] is the kind-specific tagline shown under the label; [idleStatus] is the IDLE status
-     *  text; [showStatus] gates whether the idle/success status line renders (false → a quiet launch
-     *  tile with no status). [tintIdleIcon] is false for full-color app/shortcut icons + overrides so
-     *  they aren't accent-washed. */
+     *  [subtitle] is the kind-specific tagline shown under the label; [idleStatus] is the action line
+     *  (fire kinds "tap to fire", launch kinds their verb). [isFireKind] drives SLIM's terse IDLE
+     *  wording — "ready" for fire kinds, the [idleStatus] verb for launch kinds. [showStatus] gates
+     *  whether the status line renders at all. [tintIdleIcon] is false for full-color app/shortcut
+     *  icons + overrides so they aren't accent-washed. */
     fun bind(
         title: String, idleIcon: Drawable?, isTask: Boolean, subtitle: String,
         density: ActionDensity, idleStatus: String = "tap to fire", showStatus: Boolean = true,
-        tintIdleIcon: Boolean = true
+        tintIdleIcon: Boolean = true, isFireKind: Boolean = true
     ) {
         this.titleText = title
         this.isTask = isTask
         this.hostLine = subtitle
         this.idleStatus = idleStatus
         this.showStatus = showStatus
+        this.isFireKind = isFireKind
         this.density = density
         label.text = title
         disc.idleIcon = idleIcon
@@ -362,7 +368,8 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
             // SLIM: a terse mono code, coloured per state; the label stays TEXT (the card tint + the
             // status carry the state read).
             val slimText = when (state) {
-                State.IDLE -> "ready"
+                // Launch tiles never fire, so their terse IDLE reads as the action verb, not "ready".
+                State.IDLE -> if (isFireKind) "ready" else idleStatus
                 State.PENDING -> "firing…"
                 State.SUCCESS -> flashText ?: codeText(lastCode)   // "200 OK"
                 State.QUEUED -> "queued"
