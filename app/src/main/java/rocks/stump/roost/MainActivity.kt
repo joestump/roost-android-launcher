@@ -24,6 +24,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
@@ -202,8 +203,7 @@ class MainActivity : Activity() {
             col.addView(it)
         }
         col.addView(spacer(dp(20f)))
-        col.addView(utilityGrid())
-        actionsZone()?.let { col.addView(it) }
+        renderHomeTiles(col)
         col.addView(weightedSpacer())
         col.addView(appsSettingsLink(dp(16f)))
 
@@ -375,144 +375,136 @@ class MainActivity : Activity() {
         }
     }
 
-    // Rows of 3 using a vertical LinearLayout of horizontal rows with WEIGHTED spacers between
-    // tiles (space-between) so column 1 hugs the left content edge and column 3 hugs the right.
-    // GridLayout weight sizing is unreliable, so we lay out rows + spacers by hand.
-    private fun utilityGrid(): View {
-        val columns = 4
-        val tileWidth = dp(78f)
-        val agentPkg = Prefs.agentPkg(this)
-        val tiles = mutableListOf<View>()
-
-        // The featured agent is now the full-width hero card above the grid (see featuredHero()), so it
-        // is intentionally NOT rendered as a grid tile here — no double-listing.
-
-        // Installed favorites (minus the agent + hidden), alphabetical.
-        Prefs.favorites(this)
-            .filter { it != agentPkg && !Prefs.isHidden(this, "app:$it") }
-            .mapNotNull { pkg -> appLabel(pkg)?.let { pkg to it } }
-            .sortedBy { it.second.lowercase() }
-            .forEach { (pkg, label) ->
-                val t = tile(label, overrideIcon("app:$pkg") ?: appIcon(pkg), tileWidth) { launchPackage(pkg) }
-                tileMenu(t, "app:$pkg") { uninstallApp(pkg) }
-                tiles.add(t)
-            }
-
-        // Web apps — fullscreen WebView tiles.
-        Prefs.webApps(this)
-            .filter { !Prefs.isHidden(this, "web:${it.url}") }
-            .forEach { wa ->
-                val ov = overrideIcon("web:${wa.url}")
-                val t = tile(wa.name, ov ?: webIcon(), tileWidth, iconTint = if (ov != null) null else WEB_ICON_TINT) {
-                    openWebApp(wa.url)
-                }
-                tileMenu(t, "web:${wa.url}") { Prefs.removeWebApp(this, wa.url) }
-                tiles.add(t)
-            }
-
-        // Store — get more apps.
-        tiles.add(tile(getString(R.string.store), null, tileWidth, isAdd = true) {
-            openPlayStore()
-        })
-
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+    // The unified home (ADR-0007, owner feedback): EVERY tile — favorite apps, web apps, shortcuts,
+    // HASS, HTTP — is one uniform density tile (SLIM/REGULAR vertical list, RICH 2-col grid), ordered by
+    // the single Prefs.tileLayout, with no apps-grid-vs-actions split and no section headers. An optional
+    // filter-chip row above lets the owner narrow the home to one kind; the trailing Store/Add ghost tile
+    // always closes the list. The featured agent stays a separate hero above these.
+    // Governing: ADR-0007 (unified tile model), SPEC-0004.
+    private fun renderHomeTiles(col: LinearLayout) {
+        val density = Prefs.actionDensity(this)
+        val tiles = UnifiedTiles.ordered(this)
+            .filter { !Prefs.isHidden(this, it.key) && !Prefs.isActionDisabled(this, it.key) }
+        // Chips are built from the full (unfiltered) visible set so a chip never disappears just because
+        // the active filter emptied the list — the owner must always be able to switch back to All.
+        filterChipRow(tiles)?.let {
+            col.addView(it)
+            col.addView(spacer(dp(16f)))
         }
-        tiles.chunked(columns).forEachIndexed { rowIndex, rowTiles ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = if (rowIndex == 0) 0 else dp(6f) }
-            }
-            for (col in 0 until columns) {
-                // Weighted spacer BETWEEN columns → space-between across the content width.
-                if (col > 0) row.addView(View(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
-                })
-                val t = rowTiles.getOrNull(col)
-                if (t != null) {
-                    row.addView(t)
-                } else {
-                    // Empty placeholder equal to the tile width keeps a lone/partial row's tiles
-                    // pinned to the same column x-positions as the full rows above.
-                    row.addView(View(this).apply {
-                        layoutParams = LinearLayout.LayoutParams(tileWidth, 1)
-                    })
-                }
-            }
-            container.addView(row)
-        }
-        return container
+        // A filter whose kind no longer has any tile (its last tile was deleted) falls back to All so the
+        // home can't get stuck showing nothing.
+        val active = Prefs.tileFilter(this).takeIf { f -> tiles.any { it.kind.name == f } } ?: ""
+        val shown = if (active.isBlank()) tiles else tiles.filter { it.kind.name == active }
+        val views = shown.map { buildActionTile(it, density) } + ghostTile(density)
+        col.addView(renderTiles(views, density))
     }
 
-    private fun tile(
-        label: String,
-        icon: Drawable?,
-        widthPx: Int,
-        isAdd: Boolean = false,
-        ringed: Boolean = false,
-        iconTint: Int? = null,
-        onClick: () -> Unit
-    ): View {
-        val cell = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+    /** The type (kind) filter chip row: "All" + one chip per kind that is (a) present among [tiles] and
+     *  (b) not opted out via Prefs.hiddenFilterKinds. Omitted (null) when fewer than 2 kind-chips would
+     *  show. Tapping a chip sets the active filter and re-renders; the active chip is accent-highlighted. */
+    private fun filterChipRow(tiles: List<ActionButton>): View? {
+        val hidden = Prefs.hiddenFilterKinds(this)
+        // A stable, launch-first chip order regardless of tileLayout order.
+        val order = listOf(
+            ActionKind.APP, ActionKind.WEB, ActionKind.SHORTCUT, ActionKind.HTTP, ActionKind.HASS_SCENE
+        )
+        val present = order.filter { k -> tiles.any { it.kind == k } && k.name !in hidden }
+        if (present.size < 2) return null
+        val active = Prefs.tileFilter(this).takeIf { f -> tiles.any { it.kind.name == f } } ?: ""
+
+        fun chip(label: String, selected: Boolean, onClick: () -> Unit): TextView = TextView(this).apply {
+            text = label
+            textSize = 12.5f
+            typeface = Roost.medium()
             gravity = Gravity.CENTER
-            setPadding(0, dp(6f), 0, dp(6f))
+            setTextColor(if (selected) accent else Roost.MUTED)
+            setPadding(dp(14f), dp(7f), dp(14f), dp(7f))
+            background = Roost.rounded(
+                if (selected) Roost.soft(accent) else Roost.TILE, dp(16f).toFloat(),
+                if (selected) Roost.withAlpha(accent, 0x66) else Roost.HAIRLINE, dp(1f)
+            )
             isClickable = true
             setOnClickListener { onClick() }
         }
 
-        val borderColor = when {
-            ringed -> accent
-            isAdd -> Roost.soft(accent)
-            else -> Roost.HAIRLINE
+        val chips = mutableListOf<View>()
+        chips.add(chip(getString(R.string.filter_all), active.isBlank()) {
+            Prefs.setTileFilter(this, ""); renderHome()
+        })
+        present.forEach { k ->
+            chips.add(chip(k.filterLabel(), active == k.name) {
+                Prefs.setTileFilter(this, k.name); renderHome()
+            })
         }
-        val surface = FrameLayout(this).apply {
-            // The "Add"/Store slot reads as a ghost: a faint fill + a dashed accent border, distinct
-            // from real app tiles (solid TILE fill + solid hairline), per the mockup.
-            background = if (isAdd) {
-                android.graphics.drawable.GradientDrawable().apply {
-                    setColor(Roost.withAlpha(0xFFFFFFFF.toInt(), 0x08))
-                    cornerRadius = dp(16f).toFloat()
-                    setStroke(dp(1f), Roost.soft(accent), dp(3f).toFloat(), dp(3f).toFloat())
-                }
-            } else {
-                Roost.rounded(Roost.TILE, dp(16f).toFloat(), borderColor, dp(if (ringed) 2f else 1f))
-            }
-            val s = dp(66f)
-            layoutParams = LinearLayout.LayoutParams(s, s)
+
+        val rowInner = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
-        surface.addView(ImageView(this).apply {
-            if (isAdd) {
-                setImageResource(R.drawable.ic_plus)
-                setColorFilter(accent)
-                val p = dp(11f); setPadding(p, p, p, p)
-            } else {
-                setImageDrawable(icon)
-                iconTint?.let { setColorFilter(it) }
-                val p = dp(9f); setPadding(p, p, p, p)
-            }
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+        chips.forEachIndexed { i, c ->
+            rowInner.addView(c, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { if (i > 0) leftMargin = dp(8f) })
+        }
+        return HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(rowInner)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
-        })
-        cell.addView(surface)
+        }
+    }
 
-        cell.addView(TextView(this).apply {
-            text = label
+    /** The trailing "Store / Add" ghost tile, styled as a density tile (faint fill + dashed accent
+     *  border) so it flows with the uniform list/grid instead of reintroducing a separate zone. */
+    private fun ghostTile(density: ActionDensity): View {
+        val radius = when (density) {
+            ActionDensity.SLIM -> 12f
+            ActionDensity.REGULAR -> 16f
+            ActionDensity.RICH -> 17f
+        }
+        fun ghostBg() = android.graphics.drawable.GradientDrawable().apply {
+            setColor(Roost.withAlpha(0xFFFFFFFF.toInt(), 0x08))
+            cornerRadius = dp(radius).toFloat()
+            setStroke(dp(1f), Roost.soft(accent), dp(3f).toFloat(), dp(3f).toFloat())
+        }
+        val plus = ImageView(this).apply {
+            setImageResource(R.drawable.ic_plus)
+            setColorFilter(accent)
+        }
+        val label = TextView(this).apply {
+            text = getString(R.string.store)
             setTextColor(Roost.MUTED)
-            textSize = 12.5f
-            gravity = Gravity.CENTER
-            maxLines = 1
-            setPadding(0, dp(7f), 0, 0)
-        })
-
-        cell.layoutParams = LinearLayout.LayoutParams(widthPx, LinearLayout.LayoutParams.WRAP_CONTENT)
-        return cell
+            textSize = if (density == ActionDensity.SLIM) 13.5f else 14.5f
+            typeface = Roost.medium()
+        }
+        return if (density == ActionDensity.RICH) {
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                background = ghostBg()
+                minimumHeight = dp(128f)
+                setPadding(dp(14f), dp(14f), dp(14f), dp(14f))
+                isClickable = true
+                setOnClickListener { openPlayStore() }
+                addView(plus, LinearLayout.LayoutParams(dp(30f), dp(30f)))
+                addView(label.apply { setPadding(0, dp(9f), 0, 0) })
+            }
+        } else {
+            val padV = if (density == ActionDensity.SLIM) 9f else 12f
+            val disc = if (density == ActionDensity.SLIM) 24f else 36f
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = ghostBg()
+                setPadding(dp(if (density == ActionDensity.SLIM) 12f else 14f), dp(padV),
+                    dp(14f), dp(padV))
+                isClickable = true
+                setOnClickListener { openPlayStore() }
+                addView(plus, LinearLayout.LayoutParams(dp(disc), dp(disc)))
+                addView(label.apply { setPadding(dp(12f), 0, 0, 0) })
+            }
+        }
     }
 
     // "Apps & Settings" — a gear glyph + label, centered, per the design (was text-only).
@@ -554,13 +546,14 @@ class MainActivity : Activity() {
         if (Prefs.isHidden(this, "agent")) return null
         val agentPkg = Prefs.agentPkg(this)
         val installed = isInstalled(agentPkg)
-        val whiteFill = Roost.withAlpha(0xFFFFFFFF.toInt(), 0x0B)   // rgba(255,255,255,0.045)
-        val whiteBorder = Roost.withAlpha(0xFFFFFFFF.toInt(), 0x12) // rgba(255,255,255,0.07)
+        // Accent-washed so the agent hero pops apart from the neutral tile sections below it (ADR-0007).
+        val heroFill = Roost.soft(accent)
+        val heroBorder = Roost.withAlpha(accent, 0x40)
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Roost.rounded(whiteFill, dp(22f).toFloat(), whiteBorder, dp(1f))
+            background = Roost.rounded(heroFill, dp(22f).toFloat(), heroBorder, dp(1f))
             setPadding(dp(15f), dp(15f), dp(15f), dp(15f))
             isClickable = true
             setOnClickListener { launchAgent() }
@@ -846,67 +839,37 @@ class MainActivity : Activity() {
         return IconStore.drawableFor(this, path)
     }
 
-    // --- Actions zone (pluggable — SPEC-0001 / SPEC-0002) -----------------------------------
+    // --- Uniform tile render (pluggable — SPEC-0001 / SPEC-0002 / ADR-0007) -----------------
 
-    // A dedicated "Actions" band below the app grid: a mono uppercase "ACTIONS" header (label only —
-    // density lives in Settings → Appearance, adding actions in Settings → Action buttons), then the
-    // enabled ActionButtons as tiles. SLIM/REGULAR render as a vertical list; RICH lays the cards into a
-    // 2-column grid. HTTP and HASS_SCENE buttons fire through the on-tile state machine; SHORTCUT buttons
-    // launch on tap. No actions → no zone (the whole band is null).
-    // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Actions zone placement"
-    private fun actionsZone(): View? {
-        val buttons = Prefs.actionButtons(this)
-            .filter { !Prefs.isHidden(this, it.key) && !Prefs.isActionDisabled(this, it.key) }
-        if (buttons.isEmpty()) return null
-
-        val density = Prefs.actionDensity(this)
-
+    /** Lay pre-built tile [tiles] out per [density]: SLIM/REGULAR a vertical list (5/9dp gaps), RICH a
+     *  2-column card grid (10dp gutters). Every home tile — apps, web, shortcuts, HASS, HTTP, and the
+     *  trailing Store ghost — flows through here, so they all share one presentation (owner feedback). */
+    private fun renderTiles(tiles: List<View>, density: ActionDensity): View {
         val zone = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(24f), 0, 0)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
 
-        // Header is now just the "ACTIONS" label. The inline density switcher + "+" builder were
-        // removed (too small to tap comfortably): density is set in Settings → Appearance, actions are
-        // added in Settings → Action buttons. Density-aware rendering (slim/regular/rich) is unchanged.
-        val head = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(2f), 0, dp(2f), dp(12f))
-        }
-        head.addView(TextView(this).apply {
-            text = "ACTIONS"
-            setTextColor(0xFF6E665B.toInt())
-            textSize = 10f
-            letterSpacing = 0.15f
-            typeface = Typeface.MONOSPACE
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        })
-        zone.addView(head)
-
-        // One zone-wide density (SPEC-0002). RICH is a 2-column card grid; SLIM/REGULAR a vertical list.
-        // Gap between rows: 5dp SLIM, 9dp REGULAR, 10dp RICH — the first item hugs the header.
         if (density == ActionDensity.RICH) {
-            buttons.chunked(2).forEachIndexed { rowIndex, pair ->
+            tiles.chunked(2).forEachIndexed { rowIndex, pair ->
                 val gridRow = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     layoutParams = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply { topMargin = if (rowIndex == 0) 0 else dp(10f) }
                 }
-                pair.forEachIndexed { col, b ->
+                pair.forEachIndexed { col, tileView ->
                     // Paired cells use MATCH_PARENT height so both take the row's tallest height (a
                     // horizontal LinearLayout re-measures MATCH_PARENT children to the max), aligning a
-                    // card with a host line next to a shorter shortcut card; the RICH card's internal
-                    // weighted spacer absorbs the slack, keeping the status pinned to the bottom. A LONE
-                    // tile (odd count) has no real sibling to match — only the 1px spacer below — so
-                    // MATCH_PARENT would re-measure it down to ~1px and collapse it; use WRAP_CONTENT there.
+                    // card with a subtitle line next to a shorter one; the RICH card's internal weighted
+                    // spacer absorbs the slack, keeping the status pinned to the bottom. A LONE tile (odd
+                    // count) has no real sibling to match — only the 1px spacer below — so MATCH_PARENT
+                    // would re-measure it down to ~1px and collapse it; use WRAP_CONTENT there.
                     val cellHeight = if (pair.size == 1) ViewGroup.LayoutParams.WRAP_CONTENT
                                      else ViewGroup.LayoutParams.MATCH_PARENT
-                    gridRow.addView(buildActionTile(b, density), LinearLayout.LayoutParams(
+                    gridRow.addView(tileView, LinearLayout.LayoutParams(
                         0, cellHeight, 1f
                     ).apply { if (col > 0) leftMargin = dp(10f) })
                 }
@@ -918,8 +881,8 @@ class MainActivity : Activity() {
             }
         } else {
             val gap = if (density == ActionDensity.SLIM) dp(5f) else dp(9f)
-            buttons.forEachIndexed { i, b ->
-                zone.addView(buildActionTile(b, density), LinearLayout.LayoutParams(
+            tiles.forEachIndexed { i, tileView ->
+                zone.addView(tileView, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { topMargin = if (i == 0) 0 else gap })
             }
@@ -927,28 +890,40 @@ class MainActivity : Activity() {
         return zone
     }
 
-    /** Build one configured action tile (bind + delete-menu) for the given [density]. */
+    /** Build one configured action tile (bind + delete-menu) for the given [density]. Each kind carries
+     *  its own subtitle tagline + idle status; launch kinds (APP/WEB/SHORTCUT) show no status line while
+     *  fire kinds (HTTP/HASS_SCENE) keep the on-tile firing state machine (owner feedback / ADR-0007). */
     private fun buildActionTile(b: ActionButton, density: ActionDensity): ActionTileView {
         val http = if (b.kind == ActionKind.HTTP) Prefs.httpAction(this, b.a) else null
         val isTask = http != null && HttpActionClient.hostOf(http.url).contains("switchboard")
-        val host = http?.let { HttpActionClient.hostOf(it.url) } ?: ""
+        // Per-kind (subtitle, idleStatus, showStatus): apps are icon+name only; web shows its host;
+        // shortcuts read "shortcut"; HTTP shows "METHOD · host" + a fire status; scenes read "scene".
+        val (subtitle, idleStatus, showStatus) = when (b.kind) {
+            ActionKind.APP -> Triple("", "", false)
+            ActionKind.WEB -> Triple(HttpActionClient.hostOf(b.a), "", false)
+            ActionKind.SHORTCUT -> Triple("shortcut", "", false)
+            ActionKind.HTTP -> {
+                val sub = if (http == null) "" else "${http.method} · ${HttpActionClient.hostOf(http.url)}"
+                Triple(sub, "tap to fire", true)
+            }
+            ActionKind.HASS_SCENE -> Triple("scene", "tap to run", true)
+        }
         val override = overrideIcon(b.key)
         // Tint only monochrome glyphs with the accent: a picked/synced override iff it's a mono slug icon
         // (Simple Icons / Heroicons), else the built-in ic_scene glyph on HTTP / HASS_SCENE. Full-color
-        // launcher icons (SHORTCUT), selfh.st logos, and picked full-color overrides render untinted. (Fix 3.)
+        // launcher icons (the LAUNCH kinds SHORTCUT/APP/WEB), selfh.st logos, and picked full-color
+        // overrides render untinted. (Fix 3 / ADR-0007.)
         val tintIcon = if (override != null) Prefs.iconOverrideIsMono(this, b.key)
-                       else b.kind != ActionKind.SHORTCUT
-        // SHORTCUT tiles read "<shortcut> in <App>" (e.g. "New tab in Firefox"); other kinds use their title.
-        val tileTitle = if (b.kind == ActionKind.SHORTCUT) ShortcutProvider.displayTitle(b, appLabel(b.a))
-                        else b.title
+                       else b.kind !in LAUNCH_KINDS
         val tile = ActionTileView(this, accent).apply {
             bind(
-                title = tileTitle,
+                title = tileTitle(b),
                 idleIcon = override ?: actionIcon(b),
                 isTask = isTask,
-                host = host,
-                method = http?.method ?: "",
+                subtitle = subtitle,
                 density = density,
+                idleStatus = idleStatus,
+                showStatus = showStatus,
                 tintIdleIcon = tintIcon
             )
             onFire = { invokeAction(b, this) }
@@ -956,11 +931,26 @@ class MainActivity : Activity() {
         // Deleting an HTTP action removes its definition + secret too (not just the button),
         // mirroring how removing a HASS account cleans up its scenes. Long-press → Edit (HTTP only)
         // reopens the builder with this action loaded (owner feedback).
-        tileMenu(tile, b.key, editHttpId = if (b.kind == ActionKind.HTTP) b.a else null) {
-            if (b.kind == ActionKind.HTTP) Prefs.removeHttpAction(this, b.a)
-            else Prefs.setActionEnabled(this, b, false)
-        }
+        tileMenu(tile, b.key, editHttpId = if (b.kind == ActionKind.HTTP) b.a else null) { deleteTile(b) }
         return tile
+    }
+
+    /** Kinds that open something on tap and never enter the firing state machine. */
+    private val LAUNCH_KINDS = setOf(ActionKind.SHORTCUT, ActionKind.APP, ActionKind.WEB)
+
+    /** Display title for any tile — app-shortcuts read "<shortcut> in <App>", the rest use their title. */
+    private fun tileTitle(b: ActionButton): String =
+        if (b.kind == ActionKind.SHORTCUT) ShortcutProvider.displayTitle(b, appLabel(b.a)) else b.title
+
+    /** Long-press "Delete" per kind: uninstall an app, forget a web app, delete an HTTP action, or just
+     *  un-enable a shortcut / HASS scene (they re-appear from their provider). */
+    private fun deleteTile(b: ActionButton) {
+        when (b.kind) {
+            ActionKind.APP -> uninstallApp(b.a)
+            ActionKind.WEB -> Prefs.removeWebApp(this, b.a)
+            ActionKind.HTTP -> Prefs.removeHttpAction(this, b.a)
+            ActionKind.SHORTCUT, ActionKind.HASS_SCENE -> Prefs.setActionEnabled(this, b, false)
+        }
     }
 
     // Governing: ADR-0002 (pluggable action-button providers), SPEC-0002 REQ "General HTTP-action definition"
@@ -970,6 +960,8 @@ class MainActivity : Activity() {
             try { resources.getDrawable(R.drawable.ic_scene, theme)?.mutate() } catch (e: Exception) { null }
         ActionKind.HTTP ->
             try { resources.getDrawable(R.drawable.ic_scene, theme)?.mutate() } catch (e: Exception) { null }
+        ActionKind.APP -> appIcon(b.a)
+        ActionKind.WEB -> webIcon()
     }
 
     // Drives the tapped tile's on-tile state machine instead of a Toast (ADR-0004). All network runs
@@ -978,6 +970,10 @@ class MainActivity : Activity() {
     private fun invokeAction(b: ActionButton, tile: ActionTileView) {
         if (tile.isPending()) return
         when (b.kind) {
+            // LAUNCH kinds — open something and stay quiet (no pending/success/error/timeout). ADR-0007.
+            ActionKind.APP -> launchPackage(b.a)
+            ActionKind.WEB -> openWebApp(b.a)
+
             ActionKind.SHORTCUT -> {
                 // Fix 9: SHORTCUT launches synchronously (never PENDING) so isPending() can't debounce
                 // it — ignore a re-tap within the debounce window so a double-tap launches once.
@@ -1063,7 +1059,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        private val WEB_ICON_TINT = 0xFFD6CDBF.toInt()
         private const val WIREGUARD_PKG = "com.wireguard.android"
 
         // "Awake" presence tuning: >3 KB/s of combined traffic counts as activity; the mascot stays

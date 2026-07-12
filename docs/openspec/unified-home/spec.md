@@ -1,5 +1,5 @@
 ---
-status: draft
+status: accepted
 date: 2026-07-12
 implements: [ADR-0007]
 extends: [SPEC-0001, SPEC-0002]
@@ -45,24 +45,43 @@ to `Prefs.favorites` / `Prefs.webApps`; the Settings app-picker and web-app form
 - **WHEN** the owner taps an `APP` or `WEB` tile
 - **THEN** it MUST launch immediately with no ring/spinner/timeout, and no error tile on a normal launch
 
-### Requirement: Section is a property; sections group the home
+### Requirement: Uniform presentation with per-kind taglines
 
-Each tile MUST have a **section** (`Prefs.tileSection`, key → section), defaulting from kind (`APP`/`WEB` →
-Apps; `SHORTCUT`/`HASS_SCENE`/`HTTP` → Actions) and reassignable per tile. The home MUST render sections in a
-defined order, each with its eyebrow label, and MUST render each section with its declared **presentation** —
-`GRID` (compact icon + label, N-across) or `TILES` (density-aware SLIM/REGULAR/RICH). A tile's presentation
-follows its section, so any kind can appear in any section.
+Every tile MUST render with the same density-aware presentation (SLIM / REGULAR / RICH, one home-wide
+setting) — no apps-vs-actions split, no section grouping. A tile's **subtitle** MUST be metadata-driven per
+kind: `WEB` its host, `HTTP` `METHOD · host`, `SHORTCUT` "shortcut", `APP` no subtitle (name only). The
+firing status line MUST appear only on fire kinds (`HTTP`, `HASS_SCENE`); launch kinds MUST NOT show a
+"tap to fire" status.
 
-#### Scenario: Default sections preserve today's home
+#### Scenario: Apps and actions look the same
 
-- **WHEN** a fresh install renders the home
-- **THEN** apps/web MUST group under an Apps (GRID) section and shortcuts/HASS/HTTP under an Actions (TILES)
-  section, matching the pre-unification layout
+- **WHEN** the home renders a favorite app and an HTTP action at the same density
+- **THEN** both MUST use the same tile chrome; the app MUST show no firing status while the HTTP action shows
+  its `METHOD · host` subtitle and fire status
 
-#### Scenario: Moving a tile's section moves and re-presents it
+### Requirement: Filter by kind
 
-- **WHEN** the owner moves an `APP` tile into the Actions section
-- **THEN** it MUST render as a density tile under Actions and still launch on tap
+The home MUST offer a filter chip row — `All` plus one chip per kind currently present — that narrows the
+tiles to a single kind; the active filter MUST persist (`Prefs.tileFilter`). A Settings control MUST let the
+owner choose which per-kind chips appear (`Prefs.hiddenFilterKinds`).
+
+#### Scenario: Filtering narrows the home
+
+- **WHEN** the owner taps the `HTTP` chip
+- **THEN** only HTTP tiles (plus the trailing Store tile) MUST show, and the chip reads as active
+
+### Requirement: One layout orders every tile
+
+`Prefs.tileLayout` (an ordered list of tile keys) MUST be the single order authority across all providers and
+stored actions, generalizing the `action_buttons` order and replacing the alphabetical favorites order.
+Reconciliation MUST preserve existing order and append newly-appearing tiles to the tail; it MUST NOT
+reshuffle on every render. On first run the layout MUST be seeded from the current arrangement (favorites
+alphabetical, then the Actions order) so the home is visually unchanged.
+
+#### Scenario: Order is stable and manual
+
+- **WHEN** the owner arranges tiles (including apps) and later returns home
+- **THEN** the saved order MUST be preserved, and a newly favorited app MUST append (not reshuffle the rest)
 
 ### Requirement: One layout orders every tile
 

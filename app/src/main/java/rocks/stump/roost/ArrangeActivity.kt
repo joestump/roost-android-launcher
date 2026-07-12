@@ -13,12 +13,14 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * "Arrange Action Buttons": lists every configured [ActionButton] in Prefs.actionButtons() order as
- * drag-handle rows, reorders them with a framework-only long-press-and-drag (no RecyclerView /
- * ItemTouchHelper), and carries a trailing on/off switch to soft-disable a button on home. The home
- * Actions zone renders in Prefs.actionButtons() order minus hidden/disabled keys, so reordering here
- * reorders the home and the switch shows/hides. Dropping persists order via Prefs.setActionButtons; the
- * switch writes the separate Prefs.disabledActionKeys set (order and enabled-state never clobber each other).
+ * "Arrange Tiles": lists every home tile — favorite apps, web apps, shortcuts, HASS scenes, HTTP actions
+ * (the [UnifiedTiles] union, agent excluded) — as drag-handle rows in one flat list, in Prefs.tileLayout
+ * order, and reorders them with a framework-only long-press-and-drag (no RecyclerView / ItemTouchHelper).
+ * A trailing on/off switch soft-disables a tile on home. The home renders in tileLayout order minus
+ * hidden/disabled keys, so reordering here reorders the home. Dropping persists order via
+ * Prefs.setTileLayout (MERGING against any stored-but-not-currently-rendered keys so a transiently
+ * unavailable tile keeps its place); the switch writes the separate Prefs.disabledActionKeys set (order
+ * and enabled-state never clobber each other).
  *
  * WHY THE PRIOR ATTEMPT FAILED, AND WHAT MAKES THIS ONE WORK:
  * The gesture is handled by the *container* ([DragList]), not per-row. That matters because reordering
@@ -29,32 +31,35 @@ import android.widget.TextView
  * requestDisallowInterceptTouchEvent(true) so the ScrollView stops stealing the gesture; on a pre-lift
  * move past touch-slop we let the ScrollView intercept (it CANCELs us) so normal scrolling still works.
  *
- * Governing: ADR-0005 (settings navigation IA), ADR-0002 (pluggable action-button providers),
- * ADR-0001 (framework-only)
+ * Governing: ADR-0005 (settings navigation IA), ADR-0007 (unified tile model),
+ * ADR-0002 (pluggable action-button providers), ADR-0001 (framework-only)
  */
 class ArrangeActivity : SettingsScreen() {
 
-    override fun screenTitle(): String = "Arrange Action Buttons"
+    override fun screenTitle(): String = "Arrange Tiles"
 
     override fun buildContent(body: LinearLayout) {
-        body.addView(sectionHeader("Order on home", firstOnScreen = true))
-        val enabled = Prefs.actionButtons(this)
-        if (enabled.isEmpty()) {
+        val tiles = UnifiedTiles.ordered(this)
+        if (tiles.isEmpty()) {
+            body.addView(sectionHeader("Arrange", firstOnScreen = true))
             body.addView(card(listOf(hint(getString(R.string.actions_none)).apply {
                 setPadding(dp(16f), dp(16f), dp(16f), dp(16f))
             })))
             return
         }
+        // One flat drag list: every tile as a drag row, in tileLayout order. No sections, no headers.
         val list = DragList(this)
-        enabled.forEach { list.addView(dragRow(it)) }
+        tiles.forEach { list.addView(dragRow(it)) }
         body.addView(list)
-        body.addView(hint("Flip a button off to hide it from the home Actions zone, or long-press its handle and drag to reorder."))
+        body.addView(hint("Drag a tile to reorder the home; flip one off to hide it from home. Long-press a handle to drag."))
     }
 
     private fun kindLabel(k: ActionKind): String = when (k) {
         ActionKind.HTTP -> "HTTP action"
         ActionKind.HASS_SCENE -> "Home Assistant scene"
         ActionKind.SHORTCUT -> "App shortcut"
+        ActionKind.APP -> "App"
+        ActionKind.WEB -> "Web app"
     }
 
     /**
@@ -149,7 +154,7 @@ class ArrangeActivity : SettingsScreen() {
         override fun onTouchEvent(ev: MotionEvent): Boolean {
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    candidate = childUnder(ev.y)
+                    candidate = childUnder(ev.y)   // every child is a draggable tile row now
                     downRawY = ev.rawY
                     lastRawY = ev.rawY
                     dragging = null
@@ -224,9 +229,32 @@ class ArrangeActivity : SettingsScreen() {
             persist()
         }
 
+        // Persist the new order by MERGING it into the stored layout, not by rebuilding from only the
+        // rendered rows. Arrange renders only currently-available tiles, so a rebuild would DROP any
+        // stored key whose provider is transiently unavailable (an uninstalled-but-favorited app, a HASS
+        // account briefly gone). Instead we replace the stored layout's rendered keys, in order, with the
+        // new drag order, and leave every stored-but-not-rendered key exactly where it sits relative to
+        // the rendered keys around it. Order no longer lives in action_buttons.
         private fun persist() {
-            val ordered = (0 until childCount).mapNotNull { getChildAt(it).tag as? ActionButton }
-            Prefs.setActionButtons(this@ArrangeActivity, ordered)
+            val rendered = mutableListOf<String>()
+            for (i in 0 until childCount) {
+                (getChildAt(i).tag as? ActionButton)?.let { rendered.add(it.key) }
+            }
+            val renderedSet = rendered.toHashSet()
+            val merged = mutableListOf<String>()
+            var r = 0
+            for (key in Prefs.tileLayout(this@ArrangeActivity)) {
+                if (key in renderedSet) {
+                    // Consume the next slot of the new drag order in this stored rendered-key position.
+                    if (r < rendered.size) merged.add(rendered[r++])
+                } else {
+                    merged.add(key)   // a stored key not currently rendered keeps its place
+                }
+            }
+            // Any rendered key not present in the stored layout (should not happen — ordered() seeds new
+            // keys into the layout — but stay safe) tails on at the end.
+            while (r < rendered.size) merged.add(rendered[r++])
+            Prefs.setTileLayout(this@ArrangeActivity, merged)
         }
     }
 }

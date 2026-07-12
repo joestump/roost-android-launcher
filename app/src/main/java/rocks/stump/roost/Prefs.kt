@@ -58,6 +58,10 @@ object Prefs {
     private const val K_SYNCED_SOURCES = "synced_action_sources"
     private const val K_SYNC_LAST_AT = "sync_last_at"
     private const val K_SYNC_LAST_SUMMARY = "sync_last_summary"
+    private const val K_TILE_LAYOUT = "tile_layout"
+    private const val K_TILE_LAYOUT_SEEDED = "tile_layout_seeded"
+    private const val K_TILE_FILTER = "tile_filter"
+    private const val K_FILTER_KINDS_HIDDEN = "filter_kinds_hidden"
 
     private fun sp(c: Context): SharedPreferences =
         c.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -138,8 +142,10 @@ object Prefs {
 
     fun removeHassAccount(c: Context, id: String) {
         setHassAccounts(c, hassAccounts(c).filterNot { it.id == id })
-        // Also drop any action buttons that belonged to this account.
+        // Also drop any action buttons that belonged to this account, and their tile placement.
+        val gone = actionButtons(c).filter { it.kind == ActionKind.HASS_SCENE && it.a == id }
         setActionButtons(c, actionButtons(c).filterNot { it.kind == ActionKind.HASS_SCENE && it.a == id })
+        gone.forEach { removeTileKey(c, it.key) }
     }
 
     // --- Action buttons (pluggable) ---
@@ -232,6 +238,7 @@ object Prefs {
         setIconOverride(c, key, null)
         setActionDisabled(c, key, false)
         setHidden(c, key, false)
+        removeTileKey(c, key)
     }
 
     // Secrets keyed by action id — entered masked, shown only as •••• last4, redacted from echoes.
@@ -398,5 +405,67 @@ object Prefs {
 
     fun removeWebApp(c: Context, url: String) {
         setWebApps(c, webApps(c).filterNot { it.url == url })
+        removeTileKey(c, "web:$url")
+    }
+
+    // --- Unified tile layout (one order across every provider) — ADR-0007/SPEC-0004 ---
+    // tileLayout is the SINGLE order authority over all tiles (apps, web, shortcuts, HASS, HTTP),
+    // generalizing the old action_buttons order and replacing "favorites are alphabetical". It keys by
+    // ActionButton.key ("app:<pkg>", "web:<url>", "shortcut:…", "hass:…", "http:<id>") exactly like
+    // hidden_items / disabled_action_keys / icon_overrides, so they compose for free and need no
+    // migration. tileLayout MUST be an ordered JSON array (a StringSet would lose order — that's why
+    // favorites were alphabetical).
+
+    /** The single ordered list of tile keys across all sources. Empty until seeded; blanks skipped. */
+    fun tileLayout(c: Context): MutableList<String> {
+        val arr = runCatching { JSONArray(sp(c).getString(K_TILE_LAYOUT, "[]") ?: "[]") }.getOrNull() ?: JSONArray()
+        val out = mutableListOf<String>()
+        for (i in 0 until arr.length()) {
+            val k = arr.optString(i)
+            if (k.isNotBlank()) out.add(k)
+        }
+        return out
+    }
+
+    fun setTileLayout(c: Context, keys: List<String>) {
+        val arr = JSONArray()
+        keys.forEach { if (it.isNotBlank()) arr.put(it) }
+        sp(c).edit().putString(K_TILE_LAYOUT, arr.toString()).apply()
+    }
+
+    /** True once the first-run seed has run — a one-shot flag mirroring wallpaper_applied, so we never re-seed. */
+    fun tileLayoutSeeded(c: Context): Boolean = sp(c).getBoolean(K_TILE_LAYOUT_SEEDED, false)
+
+    /** Idempotently seed the initial order so the first post-update home is visually unchanged. No-op after
+     *  the first successful seed. [seedKeys] is computed by the caller (which owns install/label checks). */
+    fun seedTileLayoutIfNeeded(c: Context, seedKeys: List<String>) {
+        if (tileLayoutSeeded(c)) return
+        setTileLayout(c, seedKeys)
+        sp(c).edit().putBoolean(K_TILE_LAYOUT_SEEDED, true).apply()
+    }
+
+    /** Drop a truly-removed tile's placement (order). Called from the remove* paths above. */
+    fun removeTileKey(c: Context, key: String) {
+        setTileLayout(c, tileLayout(c).filterNot { it == key })
+    }
+
+    // --- Launcher type filter (filter the home by ActionKind) — ADR-0007 ---
+    // The active filter is a single ActionKind.name, or "" for "All". Which kind-chips are OFFERED on the
+    // launcher is a separate opt-out set (K_FILTER_KINDS_HIDDEN): a StringSet of ActionKind.name whose chip
+    // the owner has hidden. Default empty = every kind present among the tiles gets a chip.
+
+    /** The active filter: an ActionKind.name, or "" for All. */
+    fun tileFilter(c: Context): String = sp(c).getString(K_TILE_FILTER, "") ?: ""
+    fun setTileFilter(c: Context, v: String) = sp(c).edit().putString(K_TILE_FILTER, v).apply()
+
+    /** ActionKind.name values whose filter chip the owner has hidden from the launcher (default: none). */
+    fun hiddenFilterKinds(c: Context): Set<String> =
+        LinkedHashSet(sp(c).getStringSet(K_FILTER_KINDS_HIDDEN, emptySet()) ?: emptySet())
+
+    /** Hide (true) or show (false) [kind]'s filter chip on the launcher. */
+    fun setFilterKindHidden(c: Context, kind: ActionKind, hidden: Boolean) {
+        val cur = hiddenFilterKinds(c).toMutableSet()
+        if (hidden) cur.add(kind.name) else cur.remove(kind.name)
+        sp(c).edit().putStringSet(K_FILTER_KINDS_HIDDEN, LinkedHashSet(cur)).apply()
     }
 }

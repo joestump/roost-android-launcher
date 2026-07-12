@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-07-12
 decision-makers: [joestump, Claude]
 extends: [ADR-0002, ADR-0004, ADR-0005]
@@ -69,15 +69,21 @@ can later provision apps/web too, because they're just `ActionButton`s.
 * **Providers** (ADR-0002 objects): `FavoritesProvider` (reads `Prefs.favorites`, minus the agent, installed
   only), `WebProvider` (reads `Prefs.webApps`), plus the existing `ShortcutProvider`, HASS scenes, and stored
   HTTP. The home is the **union** of all providers + stored HTTP.
-* **Section** is a property of a tile (`Prefs.tileSection`, key → section). Default section is derived from
-  kind (`APP`/`WEB` → **Apps**; `SHORTCUT`/`HASS_SCENE`/`HTTP` → **Actions**) and can be reassigned. A section
-  declares a **presentation**: `GRID` (compact icon + label, N-across — today's utility grid) or `TILES`
-  (density-aware SLIM/REGULAR/RICH — today's Actions zone). The home renders sections in order, each with its
-  mono eyebrow.
+* **Uniform presentation.** Every tile renders the same way — the density-aware tile (SLIM / REGULAR / RICH,
+  one home-wide setting), no apps-vs-actions split and no section grouping. (An earlier revision split the
+  home into an app GRID and an actions TILES zone with a per-tile section; owner feedback replaced it with one
+  look for everything, so `TileSection`/`TilePresentation` were dropped.)
+* **Per-kind taglines.** The subtitle line is metadata-driven so a tile reads at a glance: `WEB` shows its
+  host, `HTTP` shows `METHOD · host`, `SHORTCUT` shows "shortcut", `APP` shows just its name. The
+  idle→pending→success/error/timeout status line appears **only on fire kinds** (`HTTP`, `HASS_SCENE`);
+  launch kinds carry no "tap to fire".
+* **Filter by kind.** A chip row on the home (`All` + one chip per present kind, via `ActionKind.filterLabel()`)
+  narrows the tiles to a single kind; the active filter persists (`Prefs.tileFilter`). A Settings toggle per
+  kind (`Prefs.hiddenFilterKinds`) chooses which chips appear.
 * **Layout** (`Prefs.tileLayout`, an ordered list of keys) is the single order authority across every source,
-  replacing "favorites are alphabetical" and generalizing the `action_buttons` order to all tiles. Unknown/new
-  keys append to their default section. Seeded on first run from today's arrangement (favorites alphabetical,
-  then the Actions order) so the home looks identical the first time.
+  replacing "favorites are alphabetical" and generalizing the `action_buttons` order to all tiles. New keys
+  append to the tail; the Arrange screen is a flat reorder + on/off list. Seeded on first run from today's
+  arrangement (favorites alphabetical, then the Actions order) so the home looks identical the first time.
 * **Enable/disable + hide** (`disabled_action_keys`, `hidden_items`, ADR-0005/v0.8.0) and **icon overrides**
   already key by `ActionButton.key`, so they apply uniformly to apps and web tiles for free.
 * The **featured agent** stays a distinct hero surface (not an `ActionButton`) — the one thing that is not "a
@@ -85,25 +91,24 @@ can later provision apps/web too, because they're just `ActionButton`s.
 
 ### Consequences
 
-* Good: one surface — arrange, hide, disable, change-icon, and (new) **move-between-sections** work on every
-  tile, including apps. Favorites become manually orderable (they weren't).
-* Good: `utilityGrid()` / `WebAppsActivity`-on-home / `actionsZone()` collapse into one section-driven
-  renderer + two tiny providers; ADR-0002 stays the only extension seam.
-* Good: **filtering** falls out of `section` (a section is a first-class group; a filter/search over sections
-  or kinds is a follow-up, not a re-architecture).
-* Neutral: favorites/web still live in their own Prefs (`favorites`, `webApps`) — the layout/section stores
-  reference them by key. Two stores per concept (existence vs placement), but no migration and clean
+* Good: one surface — arrange, hide, disable, change-icon, and one uniform look work on every tile, including
+  apps. Favorites become manually orderable (they weren't).
+* Good: `utilityGrid()` / `WebAppsActivity`-on-home / `actionsZone()` collapse into one uniform tile renderer
+  + two tiny providers; ADR-0002 stays the only extension seam.
+* Good: **filtering** is a first-class home feature — a per-kind chip row, configurable in Settings.
+* Neutral: favorites/web still live in their own Prefs (`favorites`, `webApps`) — the `tileLayout` store
+  references them by key. Two stores per concept (existence vs placement), but no migration and clean
   separation.
-* Bad: a small seed/migration for `tileLayout`/`tileSection` (one-time, defaulted so the home is unchanged)
-  and care that a launch-kind tile never shows a firing state.
+* Bad: a small one-time seed for `tileLayout` (defaulted so the home is unchanged) and care that a launch-kind
+  tile never shows a firing state.
 * Neutral: Curated vs Appliance mode ([ADR-0005]) is unaffected — Appliance still hides the whole grid behind
-  a long-press; the grid is just section-driven now.
+  a long-press.
 
 ### Confirmation
 
-A reviewer confirms: the home renders apps, web apps, shortcuts, HASS scenes, and HTTP as one section-grouped,
-`tileLayout`-ordered grid; `Prefs.favorites`/`Prefs.webApps` are unchanged by the refactor; Arrange lets you
-reorder across sections, move a tile's section, and toggle any tile (including an app) on/off; a launch-kind
+A reviewer confirms: the home renders apps, web apps, shortcuts, HASS scenes, and HTTP as one uniform,
+`tileLayout`-ordered tile grid with per-kind taglines and a kind-filter chip row; `Prefs.favorites`/`Prefs.webApps`
+are unchanged by the refactor; Arrange is a flat reorder + on/off list over every tile (including apps); a launch-kind
 tile shows no firing state; the agent hero remains separate with an accent-tinted background. No third-party
 library is added. Formalized in [SPEC-0004](../openspec/unified-home/spec.md).
 
