@@ -13,6 +13,13 @@ const GITHUB_URL = 'https://github.com/joestump/roost-android-launcher';
 const GITEA_URL = 'https://gitea.stump.rocks/joestump/roost-android-launcher';
 const SITE_URL = process.env.SITE_URL || 'https://joestump.github.io';
 const BASE_URL = '/roost-android-launcher/';
+
+// A single "source" link that matches the host THIS build is served from — GitHub Pages links to
+// GitHub, Gitea/StumpCloud Pages links to Gitea. Resolved at build time from SITE_URL (each CI sets it),
+// so no runtime host sniffing is needed.
+const IS_GITHUB = SITE_URL.includes('github');
+const SOURCE_URL = IS_GITHUB ? GITHUB_URL : GITEA_URL;
+const SOURCE_LABEL = IS_GITHUB ? 'GitHub' : 'Gitea';
 // ============================================================
 
 const config: Config = {
@@ -26,6 +33,12 @@ const config: Config = {
 
   url: SITE_URL,
   baseUrl: BASE_URL,
+
+  // Expose the host-matched source link to client components (the landing hero button).
+  customFields: {
+    sourceUrl: SOURCE_URL,
+    sourceLabel: SOURCE_LABEL,
+  },
 
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
@@ -77,8 +90,7 @@ const config: Config = {
       title: PROJECT_TITLE,
       items: [
         {type: 'docSidebar', sidebarId: 'docs', position: 'left', label: 'Docs'},
-        {href: GITHUB_URL, label: 'GitHub', position: 'right'},
-        {href: GITEA_URL, label: 'Gitea', position: 'right'},
+        {href: SOURCE_URL, label: SOURCE_LABEL, position: 'right'},
       ],
     },
     footer: {
@@ -87,8 +99,7 @@ const config: Config = {
         {
           title: 'Project',
           items: [
-            {label: 'GitHub', href: GITHUB_URL},
-            {label: 'Gitea', href: GITEA_URL},
+            {label: SOURCE_LABEL, href: SOURCE_URL},
           ],
         },
       ],
