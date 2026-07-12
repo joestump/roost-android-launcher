@@ -1,6 +1,6 @@
 ---
 title: Provisioning a device
-sidebar_position: 7
+sidebar_position: 8
 ---
 
 # Provisioning a device

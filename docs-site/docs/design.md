@@ -84,8 +84,8 @@ that *do a thing* rather than *launch an app*. The rule is **no actions → no z
 least one action is enabled, so a bare home stays bare.
 
 Its **[density](./http-actions.md#density) is owner-selectable** — slim list, regular cards, or a rich
-two-column grid, switched inline from the ACTIONS header — but all three densities share the same firing
-state machine and the fixed semantic ramp below, so only the layout changes, never the meaning of an outcome.
+two-column grid, set in Settings → Appearance — but all three densities share the same firing state machine
+and the fixed semantic ramp below, so only the layout changes, never the meaning of an outcome.
 
 An action tile reports its whole firing lifecycle **on the tile itself** — no Toast, no popup you might miss
 from across a dim room. It's a small `Canvas` disc driven by a `Handler` tick through a state machine:

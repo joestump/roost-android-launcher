@@ -1,6 +1,6 @@
 ---
 title: How it works
-sidebar_position: 8
+sidebar_position: 9
 ---
 
 # How it works
@@ -29,13 +29,20 @@ HTTP-action client + firing tile — no database, no analytics. The only network
 | `SettingsScreen.kt` | Shared row/control vocabulary reused by every settings screen. |
 | `BehaviorActivity.kt` | Home & behavior — home mode, auto-launch, keep-screen-on, bandwidth heartbeat. |
 | `AgentActivity.kt` | Agent — inline name, featured-app picker, restart agent app. |
-| `AppearanceActivity.kt` | Appearance — accent tint, match wallpaper. |
+| `AppearanceActivity.kt` | Appearance — accent tint, match wallpaper, action density. |
 | `AppsActivity.kt` | Apps, tiles & content — drills into Favorites, Web apps, Action buttons, Hidden. |
 | `AppPickerActivity.kt` | Searchable app picker (icon + name) for the featured agent and Favorites. |
 | `WebAppsActivity.kt` | Manage web apps (name + URL → fullscreen WebView). |
 | `HiddenActivity.kt` | Manage hidden items. |
 | `NetworkActivity.kt` | Network — WireGuard tunnel + remote-control note. |
-| `ActionsActivity.kt` | Action buttons — HTTP actions section + New action, enabled toggles, Home Assistant account form. |
+| `ActionsActivity.kt` | Action buttons — the landing that drills into HTTP actions, Home Assistant, App shortcuts, Arrange on home, and Synced actions. |
+| `HttpActionsActivity.kt` | HTTP actions — the action list, New action (builder / endpoints picker), per-action enabled toggles. |
+| `HassActivity.kt` | Home Assistant — the account-form authoring path that produces an HTTP action. |
+| `ShortcutsActivity.kt` | App shortcuts — enable Android launcher-shortcut action buttons. |
+| `ArrangeActivity.kt` | Arrange on home — drag-to-reorder the enabled action buttons into the home Actions-zone order. |
+| **Synced actions** ([ADR-0006](#architecture-decisions) / SPEC-0003) | |
+| `SyncedActions.kt` | The reconciler — reads `actions.d/*.json` from the granted tree URI and upserts/removes `ActionKind.HTTP` actions, scoped to a tracked synced-id set (`DocumentsContract` + `ContentResolver` + `org.json`). |
+| `SyncedActionsActivity.kt` | Synced actions settings — grant/clear the folder, show count + last-sync status, and Sync now. |
 
 ## Architecture decisions
 
@@ -48,8 +55,10 @@ The bigger moves are recorded as ADRs (MADR format) and formalized as specs, in 
 | [ADR-0003](https://gitea.stump.rocks/joestump/roost-android-launcher/src/branch/main/docs/adrs/ADR-0003-icon-rendering-strategy.md) | Icon rendering strategy (framework-only fetch/cache + SVG-path renderer). |
 | [ADR-0004](https://gitea.stump.rocks/joestump/roost-android-launcher/src/branch/main/docs/adrs/ADR-0004-generalized-http-action-provider.md) | Generalized [HTTP-action provider](./http-actions.md) with on-tile firing feedback. |
 | [ADR-0005](https://gitea.stump.rocks/joestump/roost-android-launcher/src/branch/main/docs/adrs/ADR-0005-settings-navigation-ia.md) | [Settings navigation IA](./settings.md) — a landing + per-category detail Activities. |
+| [ADR-0006](https://gitea.stump.rocks/joestump/roost-android-launcher/src/branch/main/docs/adrs/ADR-0006-declarative-action-provisioning.md) | [Declarative action provisioning](./synced-actions.md) — import agent-authored `actions.d/*.json` from a synced folder. |
 | [SPEC-0001](https://gitea.stump.rocks/joestump/roost-android-launcher/src/branch/main/docs/openspec/action-buttons/spec.md) | Action Buttons (formalizes ADR-0002). |
 | [SPEC-0002](https://gitea.stump.rocks/joestump/roost-android-launcher/src/branch/main/docs/openspec/http-actions/spec.md) | HTTP Actions (formalizes ADR-0004). |
+| [SPEC-0003](https://gitea.stump.rocks/joestump/roost-android-launcher/src/branch/main/docs/openspec/synced-actions/spec.md) | [Synced Actions](./synced-actions.md) (formalizes ADR-0006). |
 
 ## Becoming the home screen
 

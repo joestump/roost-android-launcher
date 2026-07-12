@@ -107,14 +107,12 @@ enabled **keep rendering and firing unchanged** — nothing to migrate by hand.
 ## Density
 
 The Actions zone comes in three display **densities**, so a shelf of many actions and a two-tile hero
-dock can each look right. Switch between them inline from a small segmented control **right in the ACTIONS
-header** — three icon chips (slim / regular / rich) beside the **+** that opens the builder — or set the
-default in [**Settings → Appearance**](./settings.md) ("Action density", default **Regular**). All three
-share the same [on-tile state machine](#the-on-tile-state-machine) and the fixed Sage/Amber/Clay ramp —
-only the layout changes.
+dock can each look right. Set the density in [**Settings → Appearance**](./settings.md) ("Action density",
+default **Regular**). All three share the same [on-tile state machine](#the-on-tile-state-machine) and the
+fixed Sage/Amber/Clay ramp — only the layout changes.
 
 <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start">
-  <img src="/roost-android-launcher/img/density-slim.png" alt="Slim density — a compact list of small disc + label cards with a terse right-aligned status, plus the ACTIONS-header density switcher" width="220" />
+  <img src="/roost-android-launcher/img/density-slim.png" alt="Slim density — a compact list of small disc + label cards with a terse right-aligned status" width="220" />
   <img src="/roost-android-launcher/img/density-regular.png" alt="Regular density — a card per action with disc, label, and a full status line under it" width="220" />
   <img src="/roost-android-launcher/img/density-rich.png" alt="Rich density — a two-column card grid with a big disc, label, a METHOD · host line, and the status" width="220" />
 </div>

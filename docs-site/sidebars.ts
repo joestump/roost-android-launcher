@@ -7,6 +7,7 @@ const sidebars: SidebarsConfig = {
     'modes',
     'design',
     'http-actions',
+    'synced-actions',
     'settings',
     'provisioning',
     'architecture',

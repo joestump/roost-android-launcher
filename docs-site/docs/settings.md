@@ -1,6 +1,6 @@
 ---
 title: The Settings screens
-sidebar_position: 6
+sidebar_position: 7
 ---
 
 # The Settings screens
@@ -51,17 +51,22 @@ surface, no package strings anywhere.
 
 ## Action buttons
 
-Under **Apps, tiles & content → Action buttons** is where [HTTP action tiles](./http-actions.md) are managed:
+Under **Apps, tiles & content → Action buttons** is itself a **landing** that splits into focused
+sub-screens, one per authoring path:
 
-<img src="/roost-android-launcher/img/settings-actions.png" alt="The Action buttons screen — each HTTP action listed with its chosen icon and a drag handle, per-action enabled toggles, New action, and a Home Assistant account form" width="320" />
+<img src="/roost-android-launcher/img/settings-actions.png" alt="The Action buttons landing — rows for HTTP actions, Home Assistant, App shortcuts, Arrange on home, and Synced actions" width="320" />
 
-- An **HTTP actions** section with a **New action** entry (into the builder / endpoints picker) and a
-  per-action **enabled** toggle.
-- **Per-action icons** — each action shows the **icon you chose** in the builder (a Jellyfin logo, a Home
-  Assistant mark, whatever fits), not a generic glyph, so the list reads at a glance.
-- **Drag to reorder** — long-press a row's **drag handle** to reorder the enabled buttons; that order is
-  the order they appear in the home Actions zone.
-- The **Home Assistant** account form, now just one authoring path that produces an HTTP action.
+| Sub-screen | What's inside |
+| --- | --- |
+| **HTTP actions** | The list of [HTTP action tiles](./http-actions.md) with a **New action** entry (into the builder / endpoints picker) and a per-action **enabled** toggle. Each action shows the **icon you chose** in the builder, not a generic glyph, so the list reads at a glance. |
+| **Home Assistant** | The Home Assistant account form — now just one authoring path that produces an HTTP action. |
+| **App shortcuts** | Android app-shortcut buttons — enable launcher shortcuts as action tiles. |
+| **Arrange on home** | **Drag to reorder** the enabled action buttons — long-press a row's **handle** to move it; that order is the order they appear in the home Actions zone. |
+| **Synced actions** | Grant a folder and import agent-authored actions from `actions.d/*.json`. [Read more](./synced-actions.md). |
+
+**Editing from home.** Long-press an action tile on the home Actions zone for its controls — **Edit**
+(opens the [HTTP-action builder](./http-actions.md#the-builder)) plus **hide**, **delete**, and **change
+icon** — so you can tweak a tile without coming back into Settings.
 
 The deep configuration — the HTTP-action builder, the endpoints picker, the icon picker — stays bespoke; the
 navigation around it is uniform.
