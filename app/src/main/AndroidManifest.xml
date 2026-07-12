@@ -102,6 +102,29 @@
             android:exported="false"
             android:label="@string/actions_title" />
 
+        <!-- Action buttons landing → per-provider detail screens + the reorder screen (owner feedback:
+             the old combined Action-buttons screen crammed HTTP + HASS + shortcuts onto one view). -->
+        <activity
+            android:name=".HttpActionsActivity"
+            android:exported="false"
+            android:label="@string/actions_title" />
+
+        <activity
+            android:name=".HassActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:label="@string/actions_title" />
+
+        <activity
+            android:name=".ShortcutsActivity"
+            android:exported="false"
+            android:label="@string/actions_title" />
+
+        <activity
+            android:name=".ArrangeActivity"
+            android:exported="false"
+            android:label="@string/actions_title" />
+
         <activity
             android:name=".IconPickerActivity"
             android:exported="false"

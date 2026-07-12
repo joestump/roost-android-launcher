@@ -774,14 +774,17 @@ class MainActivity : Activity() {
 
     // --- Long-press tile actions (Gitea issue #2) -------------------------------------------
 
-    private fun tileMenu(anchor: View, key: String, onDelete: () -> Unit) {
+    // [editHttpId] non-null adds an "Edit" item that opens the HTTP-action builder for that action id
+    // (only HTTP action tiles are editable in the builder — SHORTCUT/HASS tiles pass null, so no Edit).
+    private fun tileMenu(anchor: View, key: String, editHttpId: String? = null, onDelete: () -> Unit) {
         anchor.setOnLongClickListener {
             val p = PopupMenu(this, anchor)
-            p.menu.add(0, 1, 0, getString(R.string.tile_hide))
-            p.menu.add(0, 2, 1, getString(R.string.tile_delete))
-            p.menu.add(0, 3, 2, getString(R.string.tile_change_icon))
+            if (editHttpId != null) p.menu.add(0, 5, 0, getString(R.string.tile_edit))
+            p.menu.add(0, 1, 1, getString(R.string.tile_hide))
+            p.menu.add(0, 2, 2, getString(R.string.tile_delete))
+            p.menu.add(0, 3, 3, getString(R.string.tile_change_icon))
             if (Prefs.iconOverride(this, key) != null) {
-                p.menu.add(0, 4, 3, getString(R.string.tile_reset_icon))
+                p.menu.add(0, 4, 4, getString(R.string.tile_reset_icon))
             }
             p.setOnMenuItemClickListener { mi ->
                 when (mi.itemId) {
@@ -789,6 +792,11 @@ class MainActivity : Activity() {
                     2 -> { onDelete(); render(); true }
                     3 -> { openIconPicker(key); true }
                     4 -> { Prefs.setIconOverride(this, key, null); render(); true }
+                    5 -> {
+                        startActivity(Intent(this, HttpActionActivity::class.java)
+                            .putExtra(HttpActionActivity.EXTRA_ID, editHttpId))
+                        true
+                    }
                     else -> false
                 }
             }
@@ -916,8 +924,9 @@ class MainActivity : Activity() {
             onFire = { invokeAction(b, this) }
         }
         // Deleting an HTTP action removes its definition + secret too (not just the button),
-        // mirroring how removing a HASS account cleans up its scenes.
-        tileMenu(tile, b.key) {
+        // mirroring how removing a HASS account cleans up its scenes. Long-press → Edit (HTTP only)
+        // reopens the builder with this action loaded (owner feedback).
+        tileMenu(tile, b.key, editHttpId = if (b.kind == ActionKind.HTTP) b.a else null) {
             if (b.kind == ActionKind.HTTP) Prefs.removeHttpAction(this, b.a)
             else Prefs.setActionEnabled(this, b, false)
         }

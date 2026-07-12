@@ -17,6 +17,7 @@
     <string name="boot_good_morning">good morning.</string>
     <string name="add">Add</string>
     <string name="store">Store</string>
+    <string name="tile_edit">Edit</string>
     <string name="tile_hide">Hide</string>
     <string name="tile_delete">Delete</string>
     <string name="tile_change_icon">Change icon</string>

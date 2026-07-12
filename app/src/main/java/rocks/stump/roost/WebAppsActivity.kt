@@ -6,6 +6,7 @@ import android.graphics.drawable.Drawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -17,9 +18,19 @@ import android.widget.Toast
  * home grid. Each web app can carry a custom icon chosen from the shared [IconPickerActivity] (ADR-0003),
  * keyed by "web:<url>" exactly as the home grid keys its tile overrides. Reads and writes Prefs.webApps.
  *
+ * Add-form flow (owner feedback: "why enter URL before choosing an icon", and choosing an icon wiped the
+ * name/URL and wasn't applied): the name + URL live in [addName]/[addUrl] on the Activity, kept in sync
+ * as the user types, so the icon-picker round-trip (which finishes back here → onResume → rebuild) never
+ * wipes them. The icon override is keyed "web:<normalizedUrl>" in Prefs and shown as "selected" in the
+ * add-form slot on return; it carries straight to the home tile when "Add web app" persists the URL.
+ *
  * Governing: ADR-0005 (settings navigation IA), ADR-0003 (icon rendering strategy)
  */
 class WebAppsActivity : SettingsScreen() {
+
+    // Held add-form state so a rebuild (notably returning from the icon picker) restores what was typed.
+    private var addName = ""
+    private var addUrl = ""
 
     override fun screenTitle(): String = "Web apps"
 
@@ -35,15 +46,18 @@ class WebAppsActivity : SettingsScreen() {
 
         body.addView(sectionHeader("Add web app", firstOnScreen = apps.isEmpty()))
 
-        // "Choose icon" — picks a custom tile icon as part of adding (keyed to the URL you enter).
-        val name = plainField(getString(R.string.webapp_name_hint))
-        val url = plainField(getString(R.string.webapp_url_hint), uri = true, mono = true)
+        // Name + URL first (the natural order), then "Choose icon", then Add. Seed from the held state so
+        // nothing is lost across rebuilds, and keep the state synced as the user types.
+        val name = plainField(getString(R.string.webapp_name_hint)).apply { setText(addName) }
+        val url = plainField(getString(R.string.webapp_url_hint), uri = true, mono = true).apply { setText(addUrl) }
+        name.addTextChangedListener(watch { addName = it })
+        url.addTextChangedListener(watch { addUrl = it })
 
-        body.addView(chooseIconRow { url.text.toString() })
-        body.addView(gap(dp(9f)))
         body.addView(name)
         body.addView(gap(dp(9f)))
         body.addView(url)
+        body.addView(gap(dp(9f)))
+        body.addView(chooseIconRow(url))
         body.addView(gap(dp(12f)))
         body.addView(LinearLayout(this).apply {
             addView(TextView(this@WebAppsActivity).apply {
@@ -55,7 +69,9 @@ class WebAppsActivity : SettingsScreen() {
                 setOnClickListener {
                     val u = normalizeUrl(url.text.toString())
                     if (u.isNotEmpty()) {
+                        // The icon override is already keyed "web:<u>", so it carries to the home tile.
                         Prefs.addWebApp(this@WebAppsActivity, name.text.toString().trim(), u)
+                        addName = ""; addUrl = ""   // clear the add form (the icon override stays keyed to <u>)
                         rebuild()
                     }
                 }
@@ -63,10 +79,16 @@ class WebAppsActivity : SettingsScreen() {
         })
     }
 
-    /** Refresh so a freshly-picked icon shows on return from the icon picker. */
+    /** Refresh so restored name/url + a freshly-picked icon show on return from the icon picker. */
     override fun onResume() {
         super.onResume()
         rebuild()
+    }
+
+    private fun watch(onChange: (String) -> Unit) = object : android.text.TextWatcher {
+        override fun afterTextChanged(s: android.text.Editable?) { onChange(s?.toString() ?: "") }
+        override fun beforeTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {}
+        override fun onTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {}
     }
 
     // --- rows ---------------------------------------------------------------------------------
@@ -103,10 +125,14 @@ class WebAppsActivity : SettingsScreen() {
         return row
     }
 
-    /** The add-form "Choose icon" row: opens the icon picker keyed to the entered URL, without pinning
-     *  a tile — the icon override persists independently of the WebApp and the tile is created only on
-     *  "Add web app". */
-    private fun chooseIconRow(currentUrl: () -> String): View {
+    /**
+     * The add-form "Choose icon" row. Its leading slot shows the icon already chosen for the entered URL
+     * (so it reads as "selected" after the picker returns), else the web glyph. Tapping requires a URL —
+     * icon overrides are keyed "web:<normalizedUrl>" — and opens the picker WITHOUT pinning a tile; the
+     * tile is created only on "Add web app". The typed name/URL are already held in [addName]/[addUrl]
+     * (synced on every keystroke), so returning here restores them instead of wiping them.
+     */
+    private fun chooseIconRow(url: EditText): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -114,24 +140,28 @@ class WebAppsActivity : SettingsScreen() {
             setPadding(dp(12f), dp(9f), dp(14f), dp(9f))
             isClickable = true
             setOnClickListener {
-                val u = normalizeUrl(currentUrl())
+                val u = normalizeUrl(url.text.toString())
                 if (u.isEmpty()) {
                     Toast.makeText(this@WebAppsActivity, "Enter a URL first, then choose its icon.", Toast.LENGTH_SHORT).show()
                 } else {
-                    // Do NOT create the web app here — icon overrides are keyed "web:<url>" and persist
-                    // independently of the WebApp. The tile is created only when the user taps "Add web
-                    // app"; pinning a phantom blank-name tile on "Choose icon" was a bug.
                     openIconPicker("web:$u")
                 }
             }
         }
+        val chosen: Drawable? =
+            if (addUrl.isNotBlank()) Prefs.iconOverride(this, "web:${normalizeUrl(addUrl)}")
+                ?.let { IconStore.drawableFor(this, it) }
+            else null
         val holder = FrameLayout(this).apply {
             background = Roost.rounded(Roost.TILE, dp(11f).toFloat(), Roost.HAIRLINE, dp(1f))
             layoutParams = LinearLayout.LayoutParams(dp(36f), dp(36f)).apply { rightMargin = dp(12f) }
         }
         holder.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_web)
-            setColorFilter(accent)
+            if (chosen != null) {
+                setImageDrawable(chosen)
+            } else {
+                setImageResource(R.drawable.ic_web); setColorFilter(accent)
+            }
             val p = dp(8f); setPadding(p, p, p, p)
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
@@ -139,7 +169,7 @@ class WebAppsActivity : SettingsScreen() {
         })
         row.addView(holder)
         row.addView(TextView(this).apply {
-            text = "Choose icon"
+            text = if (chosen != null) "Change icon" else "Choose icon"
             setTextColor(ROW_LABEL); textSize = 13.5f
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
