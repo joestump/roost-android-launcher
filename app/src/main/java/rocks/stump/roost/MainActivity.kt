@@ -782,7 +782,14 @@ class MainActivity : Activity() {
         }
         val action = if (vpnUp()) "$WIREGUARD_PKG.action.SET_TUNNEL_DOWN"
         else "$WIREGUARD_PKG.action.SET_TUNNEL_UP"
-        sendBroadcast(Intent(action).setPackage(WIREGUARD_PKG).putExtra("tunnel", tunnel))
+        // WireGuard's IntentReceiver reads the tunnel name from the "tunnel" extra (gated by its
+        // "Allow remote control apps" setting). Send both the "tunnel" key and the namespaced one so the
+        // broadcast works across WireGuard builds; still a no-op unless the user enables remote control.
+        sendBroadcast(
+            Intent(action).setPackage(WIREGUARD_PKG)
+                .putExtra("tunnel", tunnel)
+                .putExtra("$WIREGUARD_PKG.extra.TUNNEL_NAME", tunnel)
+        )
         vpnChipView?.postDelayed({ refreshVpnChip() }, 1200)
     }
 

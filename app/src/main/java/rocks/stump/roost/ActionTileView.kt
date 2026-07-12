@@ -81,11 +81,11 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
 
         row.orientation = HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
-        row.isClickable = true
-        row.setOnClickListener { if (state != State.PENDING) onFire?.invoke() }
-        // The clickable inner row would otherwise swallow the long-press; forward it to this tile's
-        // own long-click listener (set by MainActivity.tileMenu) so long-press shows the Edit/Hide menu.
-        row.setOnLongClickListener { performLongClick() }
+        // The WHOLE card fires (not just the disc row): tapping anywhere on the tile invokes the action,
+        // and long-press bubbles to the card's own long-click listener (set by MainActivity.tileMenu).
+        // The inner row is left non-clickable so its taps fall through to the card.
+        isClickable = true
+        setOnClickListener { if (state != State.PENDING) onFire?.invoke() }
 
         // View identities are stable across densities (so the disc keeps its animation + the state
         // model is untouched); only sizes/typefaces/parents are re-applied per density in rebuildViews.
