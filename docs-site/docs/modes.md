@@ -5,7 +5,7 @@ sidebar_position: 3
 
 # Modes & settings
 
-Roost has two home behaviors, switchable in **Settings → Home & behavior → Home mode**.
+Roost has two home behaviors, switchable in **Settings → Home & Behavior → Home mode**.
 
 ## Curated
 
@@ -39,10 +39,10 @@ live:
 | **Restart agent app** | Bounce the agent app cleanly when it needs a fresh start. |
 | **Auto-launch agent on boot** | Foreground the agent app once after boot. |
 | **Keep screen on while docked** | Hold Roost's window awake (pair with the `stay_on_while_plugged_in` global for a true always-on dock). |
-| **Accent tint** | Honey, Slate, Sage, or Violet — recolors the mascot eyes, chips, glows, and the Add tile live (health colors stay fixed). |
+| **Accent tint** | Honey, Slate, Sage, or Violet — recolors the mascot eyes, chips, glows, the Add tile, and monochrome action-tile icon glyphs live (full-color icons and health colors stay fixed). |
 | **Favorites** | Which installed apps appear on the grid — a searchable **app picker**. |
-| **Web apps** | Add a name + URL that opens **fullscreen in a WebView** — self-host a Homarr / Homepage dashboard as an app tile. `https://` is auto-prefixed. |
-| **Action buttons** | Enable [HTTP action tiles](./http-actions.md) for the Actions zone, and manage Home Assistant accounts. |
+| **Web Apps** | Add a name + URL that opens **fullscreen in a WebView** — self-host a Homarr / Homepage dashboard as an app tile. `https://` is auto-prefixed. |
+| **Action Buttons** | Enable [HTTP action tiles](./http-actions.md) for the Actions zone, and manage Home Assistant accounts. |
 | **Match wallpaper to Roost** | Paint a matching dock-dark wallpaper so Recents and app transitions stay on-theme. |
 
 The mono status line and greeting update **live** from a battery-change receiver, so charging state and %

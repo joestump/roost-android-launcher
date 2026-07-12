@@ -44,9 +44,11 @@ stay put until you acknowledge them.
 
 `HttpActionActivity` is the builder — everything about a request in one focused screen:
 
-<img src="/roost-android-launcher/img/http-action-builder.png" alt="The HTTP action builder — method and auth segmented controls, a masked secret, header rows, a JSON body with variable chips and a valid-JSON hint, and Test fire" width="320" />
+<img src="/roost-android-launcher/img/http-action-builder.png" alt="The HTTP action builder — method and auth segmented controls, a masked secret, header rows, a JSON body with variable chips and a valid-JSON hint, and Test Fire" width="320" />
 
-- A **title** and **icon** (the icon reuses the remote icon picker).
+- A **title** and **icon** (the icon reuses the remote icon picker). Monochrome glyphs (Simple Icons,
+  Heroicons) are tinted with your accent so they match the theme; full-color icons — app and shortcut
+  launcher icons, selfh.st logos — keep their real colors.
 - A **method** segmented control — GET, POST, PUT, DELETE, PATCH.
 - A **URL** field — a bare hostname without a scheme defaults to `https://`.
 - An **auth** selector that swaps its fields per scheme (below).
@@ -86,7 +88,7 @@ HMAC signature are **redacted** from everything Roost shows you.
 You don't have to build every action from raw parts. The builder is reachable via a **"Pick from my
 endpoints"** picker that pre-fills it from a template:
 
-<img src="/roost-android-launcher/img/http-actions-endpoints.png" alt="The 'Pick from my endpoints' picker — grouped pre-wired templates plus a raw-request path" width="320" />
+<img src="/roost-android-launcher/img/http-actions-endpoints.png" alt="The 'Pick from My Endpoints' picker — grouped pre-wired templates plus a raw-request path" width="320" />
 
 - **Durable tasks** — endpoints that accept work into a queue and return "accepted".
 - **Known services** — pre-wired shapes for things like Home Assistant, a LiteLLM endpoint, or a Gitea
@@ -123,7 +125,8 @@ fixed Sage/Amber/Clay ramp — only the layout changes.
 - **Regular** (the default) — a card per action: disc + label + a full status line beneath it, plus a
   `task` tag on durable-task actions. The balanced middle — best for three to six actions.
 - **Rich** — a two-column card grid: a big disc, label, a `METHOD · host` line for HTTP actions, and the
-  status. Legible across a dim room — best for two to four hero actions on a docked idle face.
+  status. The icon sits left-justified with the card's text, with balanced top and bottom padding. Legible
+  across a dim room — best for two to four hero actions on a docked idle face.
 
 ## Framework-only, of course
 

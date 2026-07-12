@@ -1,9 +1,9 @@
 ---
-title: Synced actions
+title: Synced Actions
 sidebar_position: 6
 ---
 
-# Synced actions
+# Synced Actions
 
 The fastest way to put an action button on the phone is to **not touch the phone at all**. An agent —
 Claude on a laptop, say — creates a [HTTP action tile](./http-actions.md) by writing a small JSON file into
@@ -42,7 +42,8 @@ Each `actions.d/<name>.json` file describes a single HTTP action, keyed by a sta
   redacted handling as a hand-entered secret. Because the raw token lives in the file until it's imported,
   only put a `secret` in a **private, device-to-device** synced folder.
 - `icon` is a [selfh.st](https://selfh.st/icons/) / Simple Icons / Heroicons slug or a full URL, fetched
-  through the same icon store the builder uses.
+  through the same icon store the builder uses. Monochrome Simple Icons / Heroicons glyphs are tinted with
+  your accent on the tile so they match the theme; full-color selfh.st logos keep their real colors.
 
 The `id` is the reconcile key, so keep it stable across edits — changing a file's `id` reads as *delete the
 old action, add a new one*.
@@ -62,16 +63,16 @@ the device match the files, not the other way around:
 - **Order is preserved.** A reconcile keeps the existing home order of actions already present and appends
   newly-imported ones; it never reshuffles your arrangement.
 
-A reconcile runs when you tap **Sync now** on the Synced actions screen, and automatically when the home
+A reconcile runs when you tap **Sync now** on the Synced Actions screen, and automatically when the home
 surface resumes — so a file that synced while the phone was idle shows up the next time you return home.
 
 ## Setup
 
 Point Roost at the shared folder once:
 
-**Settings → Apps, tiles & content → Action buttons → Synced actions → Grant a folder.**
+**Settings → Apps, Tiles & Content → Action Buttons → Synced Actions → Grant a folder.**
 
-<img src="/roost-android-launcher/img/synced-actions.png" alt="The Synced actions screen before a folder is granted — an explainer for the actions.d/ layout and a Grant a folder button" width="300" />
+<img src="/roost-android-launcher/img/synced-actions.png" alt="The Synced Actions screen before a folder is granted — an explainer for the actions.d/ layout and a Grant a Folder button" width="300" />
 
 **Grant a folder** opens the system folder picker (the Storage Access Framework). Choose the
 Syncthing-shared folder that contains your `actions.d/` directory. The grant is a **persistable tree URI**,
@@ -80,7 +81,7 @@ so it survives restarts — you pick the folder once, not every launch.
 Once granted, the screen shows the folder, the imported-action count and last-sync status, a **Sync now**
 button, and a way to clear the grant:
 
-<img src="/roost-android-launcher/img/synced-actions-inuse.png" alt="The Synced actions screen with a folder granted — the synced actions listed with their status, a last-sync line, and Sync now" width="300" />
+<img src="/roost-android-launcher/img/synced-actions-inuse.png" alt="The Synced Actions screen with a folder granted — the synced actions listed with their status, a last-sync line, and Sync Now" width="300" />
 
 ## Framework-only, of course
 

@@ -19,7 +19,7 @@ HTTP-action client + firing tile — no database, no analytics. The only network
 | `Roost.kt` | Palette tokens (accent + fixed semantic ramp), drawable helpers, and the wallpaper painter. |
 | `Prefs.kt` | Typed `SharedPreferences` wrapper — the single source of truth (apps, web apps, action buttons, HTTP-action definitions, secrets). |
 | `BootReceiver.kt` | Catches `BOOT_COMPLETED`, arms a one-shot launch flag. |
-| **HTTP actions** ([ADR-0004](#architecture-decisions) / SPEC-0002) | |
+| **HTTP Actions** ([ADR-0004](#architecture-decisions) / SPEC-0002) | |
 | `HttpActionClient.kt` | Framework-only client — method, arbitrary headers, `None`/`Bearer`/`HMAC` auth, `{{var}}` body substitution (`HttpURLConnection` + `org.json` + `javax.crypto.Mac`). |
 | `ActionTileView.kt` | The `Canvas` action tile — the `idle → pending → success/queued → error → timeout` firing state machine on a `Handler` tick. |
 | `HttpActionActivity.kt` | The builder — method/auth segmented controls, header rows, JSON body + variable chips, test-fire. |
@@ -27,22 +27,22 @@ HTTP-action client + firing tile — no database, no analytics. The only network
 | **Settings** ([ADR-0005](#architecture-decisions)) | |
 | `SettingsActivity.kt` | Now a **landing** — a device-identity strip + category rows, not one long scroll. |
 | `SettingsScreen.kt` | Shared row/control vocabulary reused by every settings screen. |
-| `BehaviorActivity.kt` | Home & behavior — home mode, auto-launch, keep-screen-on, bandwidth heartbeat. |
+| `BehaviorActivity.kt` | Home & Behavior — home mode, auto-launch, keep-screen-on, bandwidth heartbeat. |
 | `AgentActivity.kt` | Agent — inline name, featured-app picker, restart agent app. |
 | `AppearanceActivity.kt` | Appearance — accent tint, match wallpaper, action density. |
-| `AppsActivity.kt` | Apps, tiles & content — drills into Favorites, Web apps, Action buttons, Hidden. |
+| `AppsActivity.kt` | Apps, Tiles & Content — drills into Favorites, Web Apps, Action Buttons, Hidden. |
 | `AppPickerActivity.kt` | Searchable app picker (icon + name) for the featured agent and Favorites. |
 | `WebAppsActivity.kt` | Manage web apps (name + URL → fullscreen WebView). |
 | `HiddenActivity.kt` | Manage hidden items. |
 | `NetworkActivity.kt` | Network — WireGuard tunnel + remote-control note. |
-| `ActionsActivity.kt` | Action buttons — the landing that drills into HTTP actions, Home Assistant, App shortcuts, Arrange on home, and Synced actions. |
-| `HttpActionsActivity.kt` | HTTP actions — the action list, New action (builder / endpoints picker), per-action enabled toggles. |
+| `ActionsActivity.kt` | Action Buttons — the landing that drills into HTTP Actions, Home Assistant, App Shortcuts, Arrange Action Buttons, and Synced Actions. |
+| `HttpActionsActivity.kt` | HTTP Actions — the action list, New action (builder / endpoints picker), per-action enabled toggles. |
 | `HassActivity.kt` | Home Assistant — the account-form authoring path that produces an HTTP action. |
-| `ShortcutsActivity.kt` | App shortcuts — enable Android launcher-shortcut action buttons. |
-| `ArrangeActivity.kt` | Arrange on home — drag-to-reorder the enabled action buttons into the home Actions-zone order. |
-| **Synced actions** ([ADR-0006](#architecture-decisions) / SPEC-0003) | |
+| `ShortcutsActivity.kt` | App Shortcuts — enable Android launcher-shortcut action buttons. |
+| `ArrangeActivity.kt` | Arrange Action Buttons — toggle each button on/off (a per-row switch that reflects home visibility) and drag-to-reorder the action buttons into the home Actions-zone order. |
+| **Synced Actions** ([ADR-0006](#architecture-decisions) / SPEC-0003) | |
 | `SyncedActions.kt` | The reconciler — reads `actions.d/*.json` from the granted tree URI and upserts/removes `ActionKind.HTTP` actions, scoped to a tracked synced-id set (`DocumentsContract` + `ContentResolver` + `org.json`). |
-| `SyncedActionsActivity.kt` | Synced actions settings — grant/clear the folder, show count + last-sync status, and Sync now. |
+| `SyncedActionsActivity.kt` | Synced Actions settings — grant/clear the folder, show count + last-sync status, and Sync now. |
 
 ## Architecture decisions
 

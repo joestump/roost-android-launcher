@@ -39,7 +39,7 @@ at any agent app in Settings.
 - **HTTP Action tiles**: a home tile that fires a user-defined HTTP request (method, URL, headers, an auth
   scheme, and a `{{var}}` JSON body) and tells you how it went **right on the tile** — firing → done /
   accepted / error. [Read more](./http-actions.md).
-- **Synced actions**: an agent can provision action buttons by dropping `actions.d/*.json` files into a
+- **Synced Actions**: an agent can provision action buttons by dropping `actions.d/*.json` files into a
   folder that syncs to the phone — write a file, the button appears. [Read more](./synced-actions.md).
 - **Three Actions-zone densities**: the Actions zone reshapes between a slim list, a regular card stack,
   and a rich two-column grid — set in Settings → Appearance.
@@ -55,7 +55,7 @@ at any agent app in Settings.
 - [Home modes &amp; settings](./modes.md)
 - [The Roost design](./design.md)
 - [HTTP Action tiles](./http-actions.md)
-- [Synced actions](./synced-actions.md)
+- [Synced Actions](./synced-actions.md)
 - [The Settings screens](./settings.md)
 - [Provisioning a device](./provisioning.md)
 - [How it works](./architecture.md)

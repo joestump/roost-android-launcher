@@ -38,7 +38,9 @@ A warm neutral base with **one themeable accent**.
 | **Accent** | `#E7A44E` | **Themeable** (Honey default) |
 
 The accent is owner-selectable in Settings — **Honey**, **Slate** (`#7FA6C9`), **Sage** (`#93B98C`), or
-**Violet** (`#B79BE0`) — and recolors the mascot eyes, chips, glows, and the Add tile live.
+**Violet** (`#B79BE0`) — and recolors the mascot eyes, chips, glows, and the Add tile live. It also tints
+**monochrome icon glyphs** (Simple Icons, Heroicons) on action tiles, so they match the theme; full-color
+icons — app and shortcut launcher icons, selfh.st logos — keep their real colors.
 
 ### Health colors — a fixed semantic ramp
 
