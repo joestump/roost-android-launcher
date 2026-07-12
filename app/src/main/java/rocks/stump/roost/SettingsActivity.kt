@@ -95,7 +95,8 @@ class SettingsActivity : SettingsScreen() {
             typeface = Roost.medium()
         })
         stack.addView(TextView(this).apply {
-            text = "Roost · ${packageName}"
+            // Show the app version, not the package name (owner feedback). (Fix 6.)
+            text = "Roost · ${BuildConfig.VERSION_NAME}"
             setTextColor(SUBTLE)
             textSize = 10.5f
             typeface = Typeface.MONOSPACE

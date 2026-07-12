@@ -8,6 +8,11 @@
     <!-- Best-effort "force stop" for the Agent → Restart action (kills the agent's background procs). -->
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
 
+    <!-- Required to toggle a named WireGuard tunnel via the home VPN chip's SET_TUNNEL_UP/DOWN
+         broadcast. Without this, WireGuard drops the broadcast even with "Allow remote control apps"
+         enabled, so the tap-to-toggle silently no-ops. Harmless if WireGuard isn't installed. (Fix 7.) -->
+    <uses-permission android:name="com.wireguard.android.permission.CONTROL_TUNNELS" />
+
     <!-- Enumerate other launchable apps for the favorites picker (Android 11+ package visibility). -->
     <queries>
         <intent>

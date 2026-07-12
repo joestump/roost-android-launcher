@@ -11,8 +11,14 @@ android {
         applicationId = "rocks.stump.roost"
         minSdk = 26
         targetSdk = 34
-        versionCode = 21
-        versionName = "0.7.6"
+        versionCode = 22
+        versionName = "0.7.7"
+    }
+
+    // Generate BuildConfig so the app can surface its own versionName (Settings device strip).
+    // A build feature toggle, not a runtime dependency — ADR-0001's dependency-free rule is intact.
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {

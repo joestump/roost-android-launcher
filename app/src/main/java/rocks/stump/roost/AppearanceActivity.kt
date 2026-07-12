@@ -7,11 +7,11 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 
 /**
- * Appearance (ADR-0005): the accent-tint swatch chooser (Honey / Slate / Sage / Violet) and the
- * one-shot "Match wallpaper to Roost" action.
+ * Appearance (ADR-0005): the accent-tint swatch chooser (Honey / Slate / Sage / Violet), the Actions
+ * zone density, and the wallpaper. Choosing an accent auto-repaints the matching dock wallpaper, so
+ * there is no separate "apply wallpaper" step.
  *
  * Governing: ADR-0005 (settings navigation IA)
  */
@@ -33,16 +33,18 @@ class AppearanceActivity : SettingsScreen() {
             Prefs.setActionDensity(this, densities[i])
             rebuild()
         })
-        body.addView(hint("How the home Actions zone renders its tiles — also switchable from the zone header."))
+        body.addView(hint("How the home Actions zone renders its tiles."))
 
         // --- Wallpaper ---
+        // No manual "apply" button anymore: choosing an accent above already repaints the matching dock
+        // wallpaper (see swatchRow). Keep just a gradient preview + a muted "it's automatic" note. (Fix 5.)
         body.addView(sectionHeader("Wallpaper"))
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(16f), dp(12f), dp(14f), dp(12f))
         }
-        // A little gradient-preview chip.
+        // A little gradient-preview chip in the current accent.
         row.addView(View(this).apply {
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
@@ -50,19 +52,11 @@ class AppearanceActivity : SettingsScreen() {
             ).apply { cornerRadius = dp(11f).toFloat() }
             layoutParams = LinearLayout.LayoutParams(dp(40f), dp(40f)).apply { rightMargin = dp(13f) }
         })
-        val stack = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        row.addView(TextView(this).apply {
+            text = "Your wallpaper matches your theme — it updates automatically when you change the accent."
+            setTextColor(SUBTLE); textSize = 12f; setLineSpacing(0f, 1.25f)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        stack.addView(TextView(this).apply {
-            text = getString(R.string.settings_wallpaper_apply); setTextColor(ROW_LABEL); textSize = 14.5f
         })
-        stack.addView(TextView(this).apply {
-            text = "Set the system wallpaper to the dock gradient"
-            setTextColor(SUBTLE); textSize = 11.5f; setPadding(0, dp(2f), 0, 0)
-        })
-        row.addView(stack)
-        row.addView(accentPill("Apply") { applyWallpaper() })
         body.addView(card(row))
     }
 
@@ -87,6 +81,10 @@ class AppearanceActivity : SettingsScreen() {
                 isClickable = true
                 setOnClickListener {
                     Prefs.setAccent(this@AppearanceActivity, color)
+                    // The matching wallpaper is a given — repaint the dock gradient for the new accent
+                    // right away rather than making it a separate manual step. (Fix 5.)
+                    Roost.applyWallpaper(this@AppearanceActivity)
+                    Prefs.setWallpaperApplied(this@AppearanceActivity, true)
                     rebuild()
                 }
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -101,20 +99,19 @@ class AppearanceActivity : SettingsScreen() {
                 }
                 layoutParams = LinearLayout.LayoutParams(dp(34f), dp(34f))
             })
+            // Full-width, center-gravity label so the name sits centered under its circle. (Fix 4.)
             card.addView(TextView(this).apply {
                 text = name
                 setTextColor(if (on) Roost.TEXT else SUBTLE)
                 textSize = 11f
+                gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(0, dp(8f), 0, 0)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
             })
             row.addView(card)
         }
         return row
-    }
-
-    private fun applyWallpaper() {
-        val ok = Roost.applyWallpaper(this)
-        Prefs.setWallpaperApplied(this, true)
-        Toast.makeText(this, if (ok) R.string.wallpaper_set else R.string.wallpaper_failed, Toast.LENGTH_SHORT).show()
     }
 }

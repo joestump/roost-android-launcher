@@ -115,8 +115,12 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         applyState()
     }
 
-    /** One-time bind of the static content (title, idle glyph, task-ness, host, method) + [density]. */
-    fun bind(title: String, idleIcon: Drawable?, isTask: Boolean, host: String, method: String, density: ActionDensity) {
+    /** One-time bind of the static content (title, idle glyph, task-ness, host, method) + [density].
+     *  [tintIdleIcon] is false for full-color app/shortcut icons + overrides so they aren't accent-washed. */
+    fun bind(
+        title: String, idleIcon: Drawable?, isTask: Boolean, host: String, method: String,
+        density: ActionDensity, tintIdleIcon: Boolean = true
+    ) {
         this.titleText = title
         this.isTask = isTask
         this.hostLine = host
@@ -124,6 +128,7 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         this.density = density
         label.text = title
         disc.idleIcon = idleIcon
+        disc.tintIdleIcon = tintIdleIcon
         rebuildViews()
         applyState()
     }
@@ -220,13 +225,15 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         label.typeface = Roost.medium()
         addView(label, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
 
-        // "METHOD · host" line for HTTP actions; shortcuts (no host) hide it.
+        // "METHOD · host" line for HTTP actions; shortcuts (no host) reserve the line but hide its text
+        // (INVISIBLE, not GONE) so a shortcut card keeps the same natural height as an HTTP card beside
+        // it — rows stay even even before the grid's MATCH_PARENT height equalization kicks in.
         hostLabel.text = when {
             hostLine.isBlank() -> ""
             method.isBlank() -> hostLine
             else -> "${method.uppercase()} · $hostLine"
         }
-        hostLabel.visibility = if (hostLine.isBlank()) GONE else VISIBLE
+        hostLabel.visibility = if (hostLine.isBlank()) INVISIBLE else VISIBLE
         addView(hostLabel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(3f)
         })
@@ -495,6 +502,12 @@ class ActionDiscView(context: Context) : View(context) {
     var accent: Int = Roost.DEFAULT_ACCENT
     var idleIcon: Drawable? = null
 
+    // Whether the idle glyph should be accent-tinted. TRUE for the built-in monochrome vector glyphs
+    // (ic_scene, the drawn bolt) so they read as part of the themed disc; FALSE for full-color app /
+    // shortcut launcher icons and user-picked icon overrides — tinting those would flatten them to a
+    // solid accent silhouette. (Fix 3.)
+    var tintIdleIcon: Boolean = true
+
     private var state = ActionTileView.State.IDLE
     private var sweep = 0f
 
@@ -577,7 +590,9 @@ class ActionDiscView(context: Context) : View(context) {
                 if (ic != null) {
                     val gpad = (w * 0.24f).toInt()
                     ic.setBounds(gpad, gpad, (w - gpad).toInt(), (h - gpad).toInt())
-                    ic.setTint(glyphPaint.color)
+                    // Only tint monochrome vector glyphs; leave full-color app/shortcut icons and picked
+                    // overrides untinted so they render in their real colors, like the home app grid. (Fix 3.)
+                    if (tintIdleIcon) ic.setTint(glyphPaint.color) else ic.setTintList(null)
                     ic.draw(canvas)
                 } else {
                     drawBolt(canvas, gr)

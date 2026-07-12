@@ -59,8 +59,8 @@
     <string name="hass_need_url_token">URL and token are required</string>
 
     <string name="settings_wireguard">VPN (WireGuard)</string>
-    <string name="wg_tunnel_hint">WireGuard tunnel name (for one-tap toggle)</string>
-    <string name="wg_note">Enable "Allow remote control apps" in WireGuard → Settings → Advanced for the toggle to work.</string>
+    <string name="wg_tunnel_hint">WireGuard tunnel name (e.g. home)</string>
+    <string name="wg_note">Toggling a tunnel by tapping the chip requires "Allow remote control apps" in WireGuard → Settings → Advanced. The chip still shows VPN status without it.</string>
     <string name="appliance_hint">long-press anywhere for apps &amp; settings</string>
     <string name="apps_and_settings">Apps &amp; Settings</string>
     <string name="not_installed">%1$s is not installed</string>

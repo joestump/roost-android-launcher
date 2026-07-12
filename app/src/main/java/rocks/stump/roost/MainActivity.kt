@@ -820,11 +820,11 @@ class MainActivity : Activity() {
 
     // --- Actions zone (pluggable — SPEC-0001 / SPEC-0002) -----------------------------------
 
-    // A dedicated "Actions" band below the app grid: a mono uppercase header with an inline density
-    // switcher (slim / regular / rich pill) + a "+" button, then the enabled ActionButtons as tiles.
-    // SLIM/REGULAR render as a vertical list; RICH lays the cards into a 2-column grid. HTTP and
-    // HASS_SCENE buttons fire through the on-tile state machine; SHORTCUT buttons launch on tap. No
-    // actions → no zone (the whole band is null).
+    // A dedicated "Actions" band below the app grid: a mono uppercase "ACTIONS" header (label only —
+    // density lives in Settings → Appearance, adding actions in Settings → Action buttons), then the
+    // enabled ActionButtons as tiles. SLIM/REGULAR render as a vertical list; RICH lays the cards into a
+    // 2-column grid. HTTP and HASS_SCENE buttons fire through the on-tile state machine; SHORTCUT buttons
+    // launch on tap. No actions → no zone (the whole band is null).
     // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Actions zone placement"
     private fun actionsZone(): View? {
         val buttons = Prefs.actionButtons(this).filter { !Prefs.isHidden(this, it.key) }
@@ -840,6 +840,9 @@ class MainActivity : Activity() {
             )
         }
 
+        // Header is now just the "ACTIONS" label. The inline density switcher + "+" builder were
+        // removed (too small to tap comfortably): density is set in Settings → Appearance, actions are
+        // added in Settings → Action buttons. Density-aware rendering (slim/regular/rich) is unchanged.
         val head = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -853,8 +856,6 @@ class MainActivity : Activity() {
             typeface = Typeface.MONOSPACE
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        head.addView(densitySwitcher(density))
-        head.addView(actionsPlusButton())
         zone.addView(head)
 
         // One zone-wide density (SPEC-0002). RICH is a 2-column card grid; SLIM/REGULAR a vertical list.
@@ -868,8 +869,12 @@ class MainActivity : Activity() {
                     ).apply { topMargin = if (rowIndex == 0) 0 else dp(10f) }
                 }
                 pair.forEachIndexed { col, b ->
+                    // MATCH_PARENT height + a WRAP_CONTENT row makes both cells take the row's tallest
+                    // height (horizontal LinearLayout re-measures MATCH_PARENT children to the max), so a
+                    // card with a host line and a shortcut card beside it align. The RICH card's internal
+                    // weighted spacer absorbs the extra height, keeping the status pinned to the bottom.
                     gridRow.addView(buildActionTile(b, density), LinearLayout.LayoutParams(
-                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+                        0, ViewGroup.LayoutParams.MATCH_PARENT, 1f
                     ).apply { if (col > 0) leftMargin = dp(10f) })
                 }
                 // A lone last tile takes one column; a weighted spacer keeps it half-width.
@@ -894,14 +899,19 @@ class MainActivity : Activity() {
         val http = if (b.kind == ActionKind.HTTP) Prefs.httpAction(this, b.a) else null
         val isTask = http != null && HttpActionClient.hostOf(http.url).contains("switchboard")
         val host = http?.let { HttpActionClient.hostOf(it.url) } ?: ""
+        val override = overrideIcon(b.key)
+        // Full-color launcher icons (SHORTCUT) and user-picked overrides render untinted; only the
+        // built-in monochrome ic_scene glyph (HTTP / HASS_SCENE) gets the accent tint. (Fix 3.)
+        val tintIcon = override == null && b.kind != ActionKind.SHORTCUT
         val tile = ActionTileView(this, accent).apply {
             bind(
                 title = b.title.substringAfterLast(" · "),
-                idleIcon = overrideIcon(b.key) ?: actionIcon(b),
+                idleIcon = override ?: actionIcon(b),
                 isTask = isTask,
                 host = host,
                 method = http?.method ?: "",
-                density = density
+                density = density,
+                tintIdleIcon = tintIcon
             )
             onFire = { invokeAction(b, this) }
         }
@@ -912,63 +922,6 @@ class MainActivity : Activity() {
             else Prefs.setActionEnabled(this, b, false)
         }
         return tile
-    }
-
-    // The inline density switcher (PART B): a rounded pill of three icon chips (slim / regular / rich).
-    // The selected chip gets a soft-accent bg + accent tint; the rest read MUTED. Tapping commits the
-    // new density and re-renders the home so the Actions zone reflows immediately.
-    private fun densitySwitcher(current: ActionDensity): View {
-        val pill = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = Roost.rounded(
-                Roost.withAlpha(0xFFFFFFFF.toInt(), 0x0A), dp(9f).toFloat(),
-                Roost.withAlpha(0xFFFFFFFF.toInt(), 0x10), dp(1f)
-            )
-            setPadding(dp(2f), dp(2f), dp(2f), dp(2f))
-        }
-        val chips = listOf(
-            ActionDensity.SLIM to R.drawable.ic_density_slim,
-            ActionDensity.REGULAR to R.drawable.ic_density_reg,
-            ActionDensity.RICH to R.drawable.ic_density_rich
-        )
-        chips.forEach { (d, res) ->
-            val on = d == current
-            val chip = FrameLayout(this).apply {
-                background = if (on) Roost.rounded(Roost.soft(accent), dp(6f).toFloat()) else null
-                layoutParams = LinearLayout.LayoutParams(dp(26f), dp(22f))
-                isClickable = true
-                setOnClickListener {
-                    if (Prefs.actionDensity(this@MainActivity) != d) {
-                        Prefs.setActionDensity(this@MainActivity, d)
-                        render()
-                    }
-                }
-            }
-            chip.addView(ImageView(this).apply {
-                setImageResource(res)
-                setColorFilter(if (on) accent else Roost.MUTED)
-                layoutParams = FrameLayout.LayoutParams(dp(13f), dp(13f), Gravity.CENTER)
-            })
-            pill.addView(chip)
-        }
-        return pill
-    }
-
-    /** The "+" button beside the density switcher — opens the HTTP-action builder (was "+ new"). */
-    private fun actionsPlusButton(): View {
-        val holder = FrameLayout(this).apply {
-            background = Roost.rounded(Roost.soft(accent), dp(9f).toFloat())
-            layoutParams = LinearLayout.LayoutParams(dp(27f), dp(27f)).apply { leftMargin = dp(6f) }
-            isClickable = true
-            setOnClickListener { startActivity(Intent(this@MainActivity, EndpointsActivity::class.java)) }
-        }
-        holder.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_plus)
-            setColorFilter(accent)
-            layoutParams = FrameLayout.LayoutParams(dp(15f), dp(15f), Gravity.CENTER)
-        })
-        return holder
     }
 
     // Governing: ADR-0002 (pluggable action-button providers), SPEC-0002 REQ "General HTTP-action definition"
