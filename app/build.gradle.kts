@@ -11,8 +11,8 @@ android {
         applicationId = "rocks.stump.roost"
         minSdk = 26
         targetSdk = 34
-        versionCode = 24
-        versionName = "0.7.9"
+        versionCode = 25
+        versionName = "0.8.0"
     }
 
     // Generate BuildConfig so the app can surface its own versionName (Settings device strip).

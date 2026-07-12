@@ -18,6 +18,25 @@ object ShortcutProvider {
         fun toButton() = ActionButton(ActionKind.SHORTCUT, key, "$appLabel · $label", pkg, id)
     }
 
+    /**
+     * Render a SHORTCUT button as "<shortcut> in <App>" (e.g. "New tab in Firefox", "Video in Camera")
+     * for display, without changing the stored "App · label" title (so no migration is needed). [appName]
+     * is the live launcher label; if null/blank (e.g. the app was uninstalled) we fall back to the app
+     * name baked into the stored title. Guards avoid "Firefox in Firefox" and labels that already name
+     * their app.
+     */
+    fun displayTitle(button: ActionButton, appName: String?): String {
+        // Stored title is "appLabel · label"; split on the FIRST " · " so a shortcut whose own label
+        // contains " · " keeps all of it (app names don't contain the separator).
+        val label = button.title.substringAfter(" · ")
+        val app = appName?.takeIf { it.isNotBlank() }
+            ?: button.title.substringBefore(" · ", "")
+        return if (app.isBlank() || label.equals(app, ignoreCase = true) || label.contains(app, ignoreCase = true))
+            label
+        else
+            "$label in $app"
+    }
+
     private fun launcherApps(c: Context): LauncherApps? =
         c.getSystemService(Context.LAUNCHER_APPS_SERVICE) as? LauncherApps
 

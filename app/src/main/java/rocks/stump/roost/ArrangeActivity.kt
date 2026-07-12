@@ -13,11 +13,12 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * "Arrange on home" (owner feedback: "I can't drag them around" — the prior in-settings drag was broken).
- * Lists every enabled [ActionButton] in Prefs.actionButtons() order as drag-handle rows and reorders them
- * with a framework-only long-press-and-drag (no RecyclerView / ItemTouchHelper). The home Actions zone
- * renders in Prefs.actionButtons() order, so reordering here reorders the home. Dropping persists via
- * Prefs.setActionButtons.
+ * "Arrange Action Buttons": lists every configured [ActionButton] in Prefs.actionButtons() order as
+ * drag-handle rows, reorders them with a framework-only long-press-and-drag (no RecyclerView /
+ * ItemTouchHelper), and carries a trailing on/off switch to soft-disable a button on home. The home
+ * Actions zone renders in Prefs.actionButtons() order minus hidden/disabled keys, so reordering here
+ * reorders the home and the switch shows/hides. Dropping persists order via Prefs.setActionButtons; the
+ * switch writes the separate Prefs.disabledActionKeys set (order and enabled-state never clobber each other).
  *
  * WHY THE PRIOR ATTEMPT FAILED, AND WHAT MAKES THIS ONE WORK:
  * The gesture is handled by the *container* ([DragList]), not per-row. That matters because reordering
@@ -33,7 +34,7 @@ import android.widget.TextView
  */
 class ArrangeActivity : SettingsScreen() {
 
-    override fun screenTitle(): String = "Arrange on home"
+    override fun screenTitle(): String = "Arrange Action Buttons"
 
     override fun buildContent(body: LinearLayout) {
         body.addView(sectionHeader("Order on home", firstOnScreen = true))
@@ -47,7 +48,7 @@ class ArrangeActivity : SettingsScreen() {
         val list = DragList(this)
         enabled.forEach { list.addView(dragRow(it)) }
         body.addView(list)
-        body.addView(hint("Long-press a row and drag to reorder — the order carries to the home Actions zone."))
+        body.addView(hint("Flip a button off to hide it from the home Actions zone, or long-press its handle and drag to reorder."))
     }
 
     private fun kindLabel(k: ActionKind): String = when (k) {
@@ -83,7 +84,8 @@ class ArrangeActivity : SettingsScreen() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         stack.addView(TextView(this).apply {
-            text = b.title; setTextColor(ROW_LABEL); textSize = 14.5f; maxLines = 1
+            text = if (b.kind == ActionKind.SHORTCUT) ShortcutProvider.displayTitle(b, null) else b.title
+            setTextColor(ROW_LABEL); textSize = 14.5f; maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
         })
         stack.addView(TextView(this).apply {
@@ -91,6 +93,24 @@ class ArrangeActivity : SettingsScreen() {
             setPadding(0, dp(2f), 0, 0)
         })
         row.addView(stack)
+        // Trailing on/off switch: a SOFT disable for the home Actions zone that KEEPS the button in
+        // action_buttons (so SHORTCUT/HASS args survive and it can be re-enabled from here, which has no
+        // live scanner) and is orthogonal to drag order. It's the only clickable child, at the trailing
+        // edge, so a touch on it toggles while the handle + label still start a drag (they're non-clickable,
+        // so their ACTION_DOWN falls through to the DragList container). Uniform row height is unaffected —
+        // the 25dp switch is shorter than the two-line label stack.
+        // "Off home" has two sources: this soft disable AND the home long-press "Hide". The switch is the
+        // single on/off control, so it reflects EITHER being off and, when turned back on, clears BOTH —
+        // otherwise a hidden button would show ON here yet stay off home and the switch couldn't restore it.
+        val offHome = Prefs.isActionDisabled(this, b.key) || Prefs.isHidden(this, b.key)
+        stack.alpha = if (offHome) 0.45f else 1f
+        row.addView(toggle(initial = !offHome) { checked ->
+            Prefs.setActionDisabled(this, b.key, !checked)
+            if (checked) Prefs.setHidden(this, b.key, false)
+            stack.alpha = if (checked) 1f else 0.45f
+        }.apply {
+            (layoutParams as? LinearLayout.LayoutParams)?.leftMargin = dp(10f)
+        })
         return row
     }
 

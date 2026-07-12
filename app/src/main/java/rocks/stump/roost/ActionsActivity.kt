@@ -12,7 +12,7 @@ import android.widget.LinearLayout
  *  1. HTTP actions  → [HttpActionsActivity] — saved HTTP actions + "New action → builder".
  *  2. Home Assistant → [HassActivity] — connected accounts + add-account form + per-account scenes.
  *  3. App shortcuts → [ShortcutsActivity] — scan apps + enable the ones you want as buttons.
- *  4. Arrange on home → [ArrangeActivity] — long-press-drag the enabled buttons into their home order.
+ *  4. Arrange Action Buttons → [ArrangeActivity] — toggle buttons on/off and long-press-drag their home order.
  *
  * Each provider screen toggles its own membership; the cross-type ORDER lives on the Arrange screen (the
  * old combined "Enabled buttons" drag list is gone). Nothing that used to be reachable was dropped.
@@ -44,23 +44,23 @@ class ActionsActivity : SettingsScreen() {
 
         body.addView(gap(dp(4f)))
         body.addView(card(
-            navRow(R.drawable.ic_bolt, "HTTP actions", "Endpoints you POST to", httpCount) {
+            navRow(R.drawable.ic_bolt, "HTTP Actions", "Endpoints you POST to", httpCount) {
                 startActivity(Intent(this, HttpActionsActivity::class.java))
             },
             navRow(R.drawable.ic_scene, "Home Assistant", "Scenes shown as buttons", hassCount) {
                 startActivity(Intent(this, HassActivity::class.java))
             },
-            navRow(R.drawable.ic_search, "App shortcuts", "One-tap app shortcuts", shortcutCount) {
+            navRow(R.drawable.ic_search, "App Shortcuts", "One-tap app shortcuts", shortcutCount) {
                 startActivity(Intent(this, ShortcutsActivity::class.java))
             },
-            navRow(R.drawable.ic_folder_sync, "Synced actions", syncedSub,
+            navRow(R.drawable.ic_folder_sync, "Synced Actions", syncedSub,
                 if (syncedGranted) syncedIds.toString() else null) {
                 startActivity(Intent(this, SyncedActionsActivity::class.java))
             },
-            navRow(R.drawable.ic_drag_handle, "Arrange on home", "Reorder the home Actions zone", enabledCount) {
+            navRow(R.drawable.ic_drag_handle, "Arrange Action Buttons", "Enable, disable, and reorder", enabledCount) {
                 startActivity(Intent(this, ArrangeActivity::class.java))
             }
         ))
-        body.addView(hint("Each type enables its own buttons; “Arrange on home” sets the order they appear in the home Actions zone."))
+        body.addView(hint("Each type enables its own buttons; “Arrange Action Buttons” toggles them on or off and sets their order in the home Actions zone."))
     }
 }

@@ -29,7 +29,7 @@ class SettingsActivity : SettingsScreen() {
         // Home & behavior → BehaviorActivity
         val modeLabel = if (Prefs.mode(this) == Prefs.MODE_APPLIANCE) "Boot-direct" else "Curated"
         body.addView(categoryRow(
-            R.drawable.ic_cat_home, "Home & behavior",
+            R.drawable.ic_cat_home, "Home & Behavior",
             "$modeLabel · auto-launch · screen on"
         ) { open(BehaviorActivity::class.java) })
 
@@ -49,7 +49,7 @@ class SettingsActivity : SettingsScreen() {
 
         // Apps, tiles & content → AppsActivity
         body.addView(categoryRow(
-            R.drawable.ic_cat_grid, "Apps, tiles & content",
+            R.drawable.ic_cat_grid, "Apps, Tiles & Content",
             "Favorites · web apps · actions · hidden"
         ) { open(AppsActivity::class.java) })
 

@@ -39,7 +39,7 @@ class EndpointsActivity : Activity() {
         }
 
         col.addView(TextView(this).apply {
-            text = "Pick from my endpoints"
+            text = "Pick from My Endpoints"
             setTextColor(Roost.TEXT); textSize = 22f; typeface = Roost.medium()
         })
         col.addView(TextView(this).apply {
@@ -55,7 +55,7 @@ class EndpointsActivity : Activity() {
 
         // Raw request → the empty builder.
         col.addView(TextView(this).apply {
-            text = "+  Raw request"
+            text = "+  Raw Request"
             setTextColor(Roost.MUTED); textSize = 13.5f; gravity = Gravity.CENTER
             background = Roost.rounded(0, dp(14f).toFloat(), 0x29FFFFFF, dp(1f))
             setPadding(0, dp(14f), 0, dp(14f))
@@ -77,21 +77,21 @@ class EndpointsActivity : Activity() {
             Template("Groom PRs", "Enqueue a PR-grooming task", "HMAC", "POST", HttpAuth.HMAC,
                 "https://your-switchboard.example.com/hooks/task",
                 "{\n  \"task\": \"groom-prs\",\n  \"device\": \"{{device}}\"\n}"),
-            Template("Sync dotfiles", "Queue a dotfiles sync", "HMAC", "POST", HttpAuth.HMAC,
+            Template("Sync Dotfiles", "Queue a dotfiles sync", "HMAC", "POST", HttpAuth.HMAC,
                 "https://your-switchboard.example.com/hooks/task",
                 "{\n  \"task\": \"sync-dotfiles\"\n}"),
-            Template("Run monitor", "Kick the health monitor", "HMAC", "POST", HttpAuth.HMAC,
+            Template("Run Monitor", "Kick the health monitor", "HMAC", "POST", HttpAuth.HMAC,
                 "https://your-switchboard.example.com/hooks/task",
                 "{\n  \"task\": \"run-monitor\"\n}")
         ),
         "Known services" to listOf(
-            Template("Home Assistant scene", "Fire a scene · Bearer", "Bearer", "POST", HttpAuth.BEARER,
+            Template("Home Assistant Scene", "Fire a scene · Bearer", "Bearer", "POST", HttpAuth.BEARER,
                 "https://home-assistant.example.com/api/services/scene/turn_on",
                 "{\n  \"entity_id\": \"scene.movie_night\"\n}"),
             Template("LiteLLM", "Ping the proxy", "Bearer", "POST", HttpAuth.BEARER,
                 "https://litellm.example.com/v1/chat/completions",
                 "{\n  \"model\": \"gpt-4o-mini\"\n}"),
-            Template("Gitea webhook", "Trigger a repo action", "None", "POST", HttpAuth.NONE,
+            Template("Gitea Webhook", "Trigger a repo action", "None", "POST", HttpAuth.NONE,
                 "https://gitea.example.com/api/v1/repos/OWNER/REPO/dispatches",
                 "{\n  \"event_type\": \"deploy\"\n}")
         )

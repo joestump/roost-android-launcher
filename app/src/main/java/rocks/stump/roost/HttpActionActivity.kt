@@ -89,7 +89,7 @@ class HttpActionActivity : Activity() {
         }
 
         col.addView(TextView(this).apply {
-            text = "HTTP action"
+            text = "HTTP Action"
             setTextColor(Roost.TEXT); textSize = 22f; typeface = Roost.medium()
             setPadding(0, 0, 0, dp(16f))
         })
@@ -216,7 +216,7 @@ class HttpActionActivity : Activity() {
 
         // --- test fire ---
         col.addView(TextView(this).apply {
-            text = "Test fire"
+            text = "Test Fire"
             setTextColor(accent); textSize = 14f; gravity = Gravity.CENTER; typeface = Roost.medium()
             background = Roost.rounded(0x0DFFFFFF, dp(14f).toFloat(), Roost.soft(accent), dp(1f))
             setPadding(0, dp(14f), 0, dp(14f))
@@ -235,7 +235,7 @@ class HttpActionActivity : Activity() {
 
         // --- save ---
         col.addView(TextView(this).apply {
-            text = "Save action"
+            text = "Save Action"
             setTextColor(Roost.DOCK); textSize = 15f; gravity = Gravity.CENTER; typeface = Roost.medium()
             background = Roost.rounded(accent, dp(14f).toFloat())
             setPadding(0, dp(14f), 0, dp(14f))
@@ -389,7 +389,7 @@ class HttpActionActivity : Activity() {
         Thread {
             val res = HttpActionClient.fire(action, secret, HttpActionClient.defaultVars(this))
             runOnUiThread {
-                btn.text = "Test fire"; btn.isClickable = true
+                btn.text = "Test Fire"; btn.isClickable = true
                 val color = when {
                     res.timeout -> Roost.AMBER
                     res.ok -> Roost.SAGE

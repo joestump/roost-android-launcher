@@ -37,7 +37,7 @@ class AppPickerActivity : SettingsScreen() {
     private var hintLabel: TextView? = null
 
     override fun screenTitle(): String =
-        if (mode == MODE_FEATURED) "Choose agent app" else "Favorites"
+        if (mode == MODE_FEATURED) "Choose Agent App" else "Favorites"
 
     override fun buildContent(body: LinearLayout) {
         if (all.isEmpty()) all = loadApps()

@@ -47,7 +47,9 @@ object Prefs {
     private const val K_HASS_ACCOUNTS = "hass_accounts"
     private const val K_ACTION_BUTTONS = "action_buttons"
     private const val K_HIDDEN = "hidden_items"
+    private const val K_DISABLED_ACTIONS = "disabled_action_keys"
     private const val K_ICON_OVERRIDES = "icon_overrides"
+    private const val K_ICON_OVERRIDE_MONO = "icon_override_mono"
     private const val K_HTTP_ACTIONS = "http_actions"
     private const val K_HTTP_SECRETS = "http_secrets"
     private const val K_ACTION_DENSITY = "action_density"
@@ -224,6 +226,12 @@ object Prefs {
         setHttpActions(c, httpActions(c).filterNot { it.id == id })
         setHttpSecret(c, id, null)
         setActionButtons(c, actionButtons(c).filterNot { it.kind == ActionKind.HTTP && it.a == id })
+        // Prune the per-button side stores keyed by "http:<id>" so a later action re-created with the
+        // same id can't inherit a stale icon override or a leftover disable/hide flag.
+        val key = "http:$id"
+        setIconOverride(c, key, null)
+        setActionDisabled(c, key, false)
+        setHidden(c, key, false)
     }
 
     // Secrets keyed by action id — entered masked, shown only as •••• last4, redacted from echoes.
@@ -301,24 +309,65 @@ object Prefs {
         sp(c).edit().putStringSet(K_HIDDEN, cur).apply()
     }
 
+    // --- Disabled action buttons (Arrange screen → soft on/off, distinct from Hide) ---
+    // A key-keyed StringSet, mirroring hidden_items, that the home render filter honors. It is a "soft"
+    // disable that KEEPS the button in action_buttons (so its SHORTCUT/HASS args survive and it can be
+    // re-enabled from Arrange, which has no live scanner) and is orthogonal to drag order.
+    fun disabledActionKeys(c: Context): MutableSet<String> =
+        LinkedHashSet(sp(c).getStringSet(K_DISABLED_ACTIONS, emptySet()) ?: emptySet())
+
+    fun isActionDisabled(c: Context, key: String): Boolean = disabledActionKeys(c).contains(key)
+
+    fun setActionDisabled(c: Context, key: String, disabled: Boolean) {
+        val cur = disabledActionKeys(c)
+        if (disabled) cur.add(key) else cur.remove(key)
+        sp(c).edit().putStringSet(K_DISABLED_ACTIONS, cur).apply()
+    }
+
     // --- Icon overrides (long-press → Change icon; key → cached file path) ---
+    // A parallel key→bool map records whether the override is a MONOCHROME slug glyph (Simple Icons /
+    // Heroicons) — those may be tinted with the theme accent at draw time; full-color overrides
+    // (selfh.st logos, app icons) must not be. The flag is set at pick/sync time where the source is
+    // known and cleared whenever the override is reset, so it can never desync from the path.
 
     fun iconOverride(c: Context, key: String): String? {
         val o = JSONObject(sp(c).getString(K_ICON_OVERRIDES, "{}") ?: "{}")
         return if (o.has(key)) o.optString(key) else null
     }
 
-    fun setIconOverride(c: Context, key: String, path: String?) {
+    /** True only if the current override for [key] is a monochrome slug icon eligible for accent tint. */
+    fun iconOverrideIsMono(c: Context, key: String): Boolean {
+        val o = JSONObject(sp(c).getString(K_ICON_OVERRIDE_MONO, "{}") ?: "{}")
+        return o.optBoolean(key, false)
+    }
+
+    fun setIconOverride(c: Context, key: String, path: String?, mono: Boolean = false) {
         val o = JSONObject(sp(c).getString(K_ICON_OVERRIDES, "{}") ?: "{}")
-        if (path == null) o.remove(key) else o.put(key, path)
-        sp(c).edit().putString(K_ICON_OVERRIDES, o.toString()).apply()
+        val m = JSONObject(sp(c).getString(K_ICON_OVERRIDE_MONO, "{}") ?: "{}")
+        if (path == null) {
+            o.remove(key); m.remove(key)                 // reset clears both, never desyncs
+        } else {
+            o.put(key, path)
+            if (mono) m.put(key, true) else m.remove(key)
+        }
+        sp(c).edit()
+            .putString(K_ICON_OVERRIDES, o.toString())
+            .putString(K_ICON_OVERRIDE_MONO, m.toString())
+            .apply()
     }
 
     fun isActionEnabled(c: Context, key: String): Boolean = actionButtons(c).any { it.key == key }
 
     fun setActionEnabled(c: Context, button: ActionButton, enabled: Boolean) {
         val cur = actionButtons(c).filterNot { it.key == button.key }.toMutableList()
-        if (enabled) cur.add(button)
+        if (enabled) {
+            cur.add(button)
+            // A fresh (re-)enable is meant to be visible on home: drop any stale off-home flags a prior
+            // instance with this same deterministic key left behind, so the button isn't silently
+            // suppressed by a leftover disable/hide.
+            setActionDisabled(c, button.key, false)
+            setHidden(c, button.key, false)
+        }
         setActionButtons(c, cur)
     }
 

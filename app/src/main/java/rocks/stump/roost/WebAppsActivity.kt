@@ -32,7 +32,7 @@ class WebAppsActivity : SettingsScreen() {
     private var addName = ""
     private var addUrl = ""
 
-    override fun screenTitle(): String = "Web apps"
+    override fun screenTitle(): String = "Web Apps"
 
     override fun buildContent(body: LinearLayout) {
         body.addView(hint("Pin a URL as a fullscreen tile on the home grid.")
@@ -169,7 +169,7 @@ class WebAppsActivity : SettingsScreen() {
         })
         row.addView(holder)
         row.addView(TextView(this).apply {
-            text = if (chosen != null) "Change icon" else "Choose icon"
+            text = if (chosen != null) "Change Icon" else "Choose Icon"
             setTextColor(ROW_LABEL); textSize = 13.5f
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })

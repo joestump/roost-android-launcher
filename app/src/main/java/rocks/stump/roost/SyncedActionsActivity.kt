@@ -23,7 +23,7 @@ import android.widget.Toast
  */
 class SyncedActionsActivity : SettingsScreen() {
 
-    override fun screenTitle(): String = "Synced actions"
+    override fun screenTitle(): String = "Synced Actions"
 
     private var syncing = false
 
@@ -63,7 +63,7 @@ class SyncedActionsActivity : SettingsScreen() {
             setOnClickListener { launchPicker() }
         }
         row.addView(TextView(this).apply {
-            text = "Grant a folder"; setTextColor(accent); textSize = 15f; typeface = Roost.medium()
+            text = "Grant a Folder"; setTextColor(accent); textSize = 15f; typeface = Roost.medium()
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         row.addView(TextView(this).apply {
@@ -101,7 +101,7 @@ class SyncedActionsActivity : SettingsScreen() {
             setTextColor(SUBTLE); textSize = 12f
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        pillRow.addView(accentPill(if (syncing) "Syncing…" else "Sync now") { syncNow() })
+        pillRow.addView(accentPill(if (syncing) "Syncing…" else "Sync Now") { syncNow() })
         body.addView(pillRow)
 
         // The currently-synced action titles (read-only).
@@ -135,7 +135,7 @@ class SyncedActionsActivity : SettingsScreen() {
             setOnClickListener { removeFolder(uri) }
         }
         row.addView(TextView(this).apply {
-            text = "Remove folder"; setTextColor(Roost.CLAY); textSize = 15f
+            text = "Remove Folder"; setTextColor(Roost.CLAY); textSize = 15f
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         row.addView(TextView(this).apply {

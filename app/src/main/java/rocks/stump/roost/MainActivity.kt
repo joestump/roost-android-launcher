@@ -855,7 +855,8 @@ class MainActivity : Activity() {
     // launch on tap. No actions → no zone (the whole band is null).
     // Governing: ADR-0004 (generalized HTTP-action provider), SPEC-0002 REQ "Actions zone placement"
     private fun actionsZone(): View? {
-        val buttons = Prefs.actionButtons(this).filter { !Prefs.isHidden(this, it.key) }
+        val buttons = Prefs.actionButtons(this)
+            .filter { !Prefs.isHidden(this, it.key) && !Prefs.isActionDisabled(this, it.key) }
         if (buttons.isEmpty()) return null
 
         val density = Prefs.actionDensity(this)
@@ -897,12 +898,16 @@ class MainActivity : Activity() {
                     ).apply { topMargin = if (rowIndex == 0) 0 else dp(10f) }
                 }
                 pair.forEachIndexed { col, b ->
-                    // MATCH_PARENT height + a WRAP_CONTENT row makes both cells take the row's tallest
-                    // height (horizontal LinearLayout re-measures MATCH_PARENT children to the max), so a
-                    // card with a host line and a shortcut card beside it align. The RICH card's internal
-                    // weighted spacer absorbs the extra height, keeping the status pinned to the bottom.
+                    // Paired cells use MATCH_PARENT height so both take the row's tallest height (a
+                    // horizontal LinearLayout re-measures MATCH_PARENT children to the max), aligning a
+                    // card with a host line next to a shorter shortcut card; the RICH card's internal
+                    // weighted spacer absorbs the slack, keeping the status pinned to the bottom. A LONE
+                    // tile (odd count) has no real sibling to match — only the 1px spacer below — so
+                    // MATCH_PARENT would re-measure it down to ~1px and collapse it; use WRAP_CONTENT there.
+                    val cellHeight = if (pair.size == 1) ViewGroup.LayoutParams.WRAP_CONTENT
+                                     else ViewGroup.LayoutParams.MATCH_PARENT
                     gridRow.addView(buildActionTile(b, density), LinearLayout.LayoutParams(
-                        0, ViewGroup.LayoutParams.MATCH_PARENT, 1f
+                        0, cellHeight, 1f
                     ).apply { if (col > 0) leftMargin = dp(10f) })
                 }
                 // A lone last tile takes one column; a weighted spacer keeps it half-width.
@@ -928,12 +933,17 @@ class MainActivity : Activity() {
         val isTask = http != null && HttpActionClient.hostOf(http.url).contains("switchboard")
         val host = http?.let { HttpActionClient.hostOf(it.url) } ?: ""
         val override = overrideIcon(b.key)
-        // Full-color launcher icons (SHORTCUT) and user-picked overrides render untinted; only the
-        // built-in monochrome ic_scene glyph (HTTP / HASS_SCENE) gets the accent tint. (Fix 3.)
-        val tintIcon = override == null && b.kind != ActionKind.SHORTCUT
+        // Tint only monochrome glyphs with the accent: a picked/synced override iff it's a mono slug icon
+        // (Simple Icons / Heroicons), else the built-in ic_scene glyph on HTTP / HASS_SCENE. Full-color
+        // launcher icons (SHORTCUT), selfh.st logos, and picked full-color overrides render untinted. (Fix 3.)
+        val tintIcon = if (override != null) Prefs.iconOverrideIsMono(this, b.key)
+                       else b.kind != ActionKind.SHORTCUT
+        // SHORTCUT tiles read "<shortcut> in <App>" (e.g. "New tab in Firefox"); other kinds use their title.
+        val tileTitle = if (b.kind == ActionKind.SHORTCUT) ShortcutProvider.displayTitle(b, appLabel(b.a))
+                        else b.title
         val tile = ActionTileView(this, accent).apply {
             bind(
-                title = b.title.substringAfterLast(" · "),
+                title = tileTitle,
                 idleIcon = override ?: actionIcon(b),
                 isTask = isTask,
                 host = host,

@@ -10,7 +10,7 @@ import android.widget.LinearLayout
  */
 class BehaviorActivity : SettingsScreen() {
 
-    override fun screenTitle(): String = "Home & behavior"
+    override fun screenTitle(): String = "Home & Behavior"
 
     override fun buildContent(body: LinearLayout) {
         // --- Home mode (was: RadioGroup Curated / Appliance) ---
@@ -41,7 +41,7 @@ class BehaviorActivity : SettingsScreen() {
         // --- Waking-up intro (Prefs.bootIntro) ---
         body.addView(sectionHeader("Boot intro"))
         body.addView(card(
-            toggleRow("Play the waking-up intro", "A brief boot-log animation after a boot-launch (curated mode)",
+            toggleRow("Play the Waking-Up Intro", "A brief boot-log animation after a boot-launch (curated mode)",
                 Prefs.bootIntro(this)) { Prefs.setBootIntro(this, it) }
         ))
     }

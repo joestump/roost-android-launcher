@@ -47,7 +47,7 @@ class AgentActivity : SettingsScreen() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         stack.addView(android.widget.TextView(this).apply {
-            text = "Restart agent app"; setTextColor(ROW_LABEL); textSize = 14.5f
+            text = "Restart Agent App"; setTextColor(ROW_LABEL); textSize = 14.5f
         })
         stack.addView(android.widget.TextView(this).apply {
             text = "Force-stop background processes & relaunch"

@@ -11,7 +11,7 @@ import android.widget.LinearLayout
  */
 class AppsActivity : SettingsScreen() {
 
-    override fun screenTitle(): String = "Apps, tiles & content"
+    override fun screenTitle(): String = "Apps, Tiles & Content"
 
     override fun buildContent(body: LinearLayout) {
         val favCount = Prefs.favorites(this).size.toString()
@@ -25,13 +25,13 @@ class AppsActivity : SettingsScreen() {
                 startActivity(Intent(this, AppPickerActivity::class.java)
                     .putExtra(AppPickerActivity.EXTRA_MODE, AppPickerActivity.MODE_FAVORITES))
             },
-            navRow(R.drawable.ic_web, "Web apps", "Fullscreen URL tiles", webCount) {
+            navRow(R.drawable.ic_web, "Web Apps", "Fullscreen URL tiles", webCount) {
                 startActivity(Intent(this, WebAppsActivity::class.java))
             },
-            navRow(R.drawable.ic_bolt, "Action buttons", "HTTP · Home Assistant · shortcuts", actCount) {
+            navRow(R.drawable.ic_bolt, "Action Buttons", "HTTP · Home Assistant · shortcuts", actCount) {
                 startActivity(Intent(this, ActionsActivity::class.java))
             },
-            navRow(R.drawable.ic_eye_off, "Hidden items", "Restore tiles you hid", hidCount) {
+            navRow(R.drawable.ic_eye_off, "Hidden Items", "Restore tiles you hid", hidCount) {
                 startActivity(Intent(this, HiddenActivity::class.java))
             }
         ))

@@ -21,7 +21,7 @@ import android.widget.TextView
  */
 class HttpActionsActivity : SettingsScreen() {
 
-    override fun screenTitle(): String = "HTTP actions"
+    override fun screenTitle(): String = "HTTP Actions"
 
     // Rebuild on return so a newly-added/edited HTTP action (saved in the builder, which finishes back to
     // here) or a fresh icon override shows immediately. Skip the first onResume — onCreate already built —
@@ -78,7 +78,7 @@ class HttpActionsActivity : SettingsScreen() {
         })
         row.addView(holder)
         row.addView(TextView(this).apply {
-            text = "New action"; setTextColor(accent); textSize = 14f
+            text = "New Action"; setTextColor(accent); textSize = 14f
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         row.addView(TextView(this).apply {

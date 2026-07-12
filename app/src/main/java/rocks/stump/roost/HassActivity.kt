@@ -49,7 +49,7 @@ class HassActivity : SettingsScreen() {
         val on = Prefs.actionButtons(this).count { it.kind == ActionKind.HASS_SCENE && it.a == acct.id }
         val accountCard = card(
             hassStatusRow(acct),
-            navRow(null, "Scenes shown as buttons", "Tap to load and toggle scenes", "$on on") {
+            navRow(null, "Scenes Shown as Buttons", "Tap to load and toggle scenes", "$on on") {
                 loadScenes(acct, scenesBox)
             },
             removeAccountRow(acct)
@@ -95,7 +95,7 @@ class HassActivity : SettingsScreen() {
             setOnClickListener { Prefs.removeHassAccount(this@HassActivity, acct.id); rebuild() }
         }
         row.addView(TextView(this).apply {
-            text = "Remove account"; setTextColor(CLAY); textSize = 13.5f
+            text = "Remove Account"; setTextColor(CLAY); textSize = 13.5f
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         row.addView(ImageView(this).apply {

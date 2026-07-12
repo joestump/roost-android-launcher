@@ -149,6 +149,10 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         row.removeAllViews()
         labels.removeAllViews()
         setPadding(0, 0, 0, 0)
+        // The row is a SHARED view; reset its padding each rebuild so a prior density's row padding
+        // (buildSlim/buildRegular set one; the constructor runs buildRegular before bind() picks RICH)
+        // doesn't leak into RICH and indent/offset its top-left icon.
+        row.setPadding(0, 0, 0, 0)
         minimumHeight = 0
         row.gravity = Gravity.CENTER_VERTICAL
         when (density) {
@@ -214,8 +218,10 @@ class ActionTileView(context: Context, private val accent: Int) : LinearLayout(c
         setPadding(dp(14f), dp(14f), dp(14f), dp(14f))
         minimumHeight = dp(128f)
 
-        // Top row: the disc, and (for durable tasks) a "task" chip pinned top-right.
+        // Top row: the disc, and (for durable tasks) a "task" chip pinned top-right. The RICH glyph fills
+        // the disc (low inset) so the icon reads flush-left, its left edge on the card's text column.
         row.gravity = Gravity.TOP
+        disc.iconInset = 0.06f
         disc.layoutParams = LayoutParams(dp(42f), dp(42f))
         row.addView(disc)
         row.addView(View(context).apply { layoutParams = LayoutParams(0, dp(1f), 1f) })
@@ -511,6 +517,11 @@ class ActionDiscView(context: Context) : View(context) {
     // solid accent silhouette. (Fix 3.)
     var tintIdleIcon: Boolean = true
 
+    // Fraction of the disc size the idle glyph is inset by (its padding inside the chip). Default keeps
+    // the glyph comfortably centered; RICH lowers it so the icon sits nearly flush-left, aligned with the
+    // card's text column (owner request).
+    var iconInset: Float = 0.24f
+
     private var state = ActionTileView.State.IDLE
     private var sweep = 0f
 
@@ -591,7 +602,7 @@ class ActionDiscView(context: Context) : View(context) {
             ActionTileView.State.IDLE, ActionTileView.State.PENDING -> {
                 val ic = idleIcon
                 if (ic != null) {
-                    val gpad = (w * 0.24f).toInt()
+                    val gpad = (w * iconInset).toInt()
                     ic.setBounds(gpad, gpad, (w - gpad).toInt(), (h - gpad).toInt())
                     // Only tint monochrome vector glyphs; leave full-color app/shortcut icons and picked
                     // overrides untinted so they render in their real colors, like the home app grid. (Fix 3.)

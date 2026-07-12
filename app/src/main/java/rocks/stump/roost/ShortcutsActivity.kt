@@ -13,12 +13,12 @@ import android.widget.LinearLayout
  */
 class ShortcutsActivity : SettingsScreen() {
 
-    override fun screenTitle(): String = "App shortcuts"
+    override fun screenTitle(): String = "App Shortcuts"
 
     override fun buildContent(body: LinearLayout) {
         body.addView(sectionHeader("App shortcuts", firstOnScreen = true))
         val shortcutsBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        body.addView(card(listOf(navRow(R.drawable.ic_search, "Scan apps for shortcuts",
+        body.addView(card(listOf(navRow(R.drawable.ic_search, "Scan Apps for Shortcuts",
             "Add app shortcuts as one-tap buttons") { scanShortcuts(shortcutsBox) })))
         body.addView(gap(dp(10f)))
         body.addView(shortcutsBox)

@@ -272,18 +272,22 @@ object SyncedActions {
 
     private val ICON_TINT = 0xFFE8E1D5.toInt()
 
-    /** Resolve [icon] (a selfh.st/Simple-Icons/Heroicons slug OR a URL) to a cached file + set override. */
+    /** Resolve [icon] (a selfh.st/Simple-Icons/Heroicons slug OR a URL) to a cached file + set override.
+     *  Records `mono` per SUCCESSFUL branch (SVG slug sets = monochrome, tintable with accent; raster
+     *  selfh.st/URL logos = full-color) — never inferred after the fact, since the slug path tries a
+     *  raster source first and only falls back to SVG. */
     private fun fetchIcon(context: Context, key: String, icon: String) {
+        var mono = false
         val file = if (icon.startsWith("http://") || icon.startsWith("https://")) {
-            if (icon.endsWith(".svg", ignoreCase = true)) IconStore.cacheSvg(context, icon, ICON_TINT)
+            if (icon.endsWith(".svg", ignoreCase = true)) IconStore.cacheSvg(context, icon, ICON_TINT).also { mono = it != null }
             else IconStore.cacheRaster(context, icon)
         } else {
-            // A bare slug: try selfh.st raster first, then Simple Icons / Heroicons SVG.
+            // A bare slug: try selfh.st raster first (full-color), then Simple Icons / Heroicons SVG (mono).
             IconStore.cacheRaster(context, IconStore.selfhstPngUrl(icon))
-                ?: IconStore.cacheSvg(context, IconStore.iconifyUrl("simple-icons", icon), ICON_TINT)
-                ?: IconStore.cacheSvg(context, IconStore.iconifyUrl("heroicons-solid", icon), ICON_TINT)
+                ?: IconStore.cacheSvg(context, IconStore.iconifyUrl("simple-icons", icon), ICON_TINT).also { mono = it != null }
+                ?: IconStore.cacheSvg(context, IconStore.iconifyUrl("heroicons-solid", icon), ICON_TINT).also { mono = it != null }
         }
-        if (file != null) Prefs.setIconOverride(context, key, file.path)
+        if (file != null) Prefs.setIconOverride(context, key, file.path, mono = mono)
     }
 
     // --- display helpers (for the settings screen) ----------------------------------------------

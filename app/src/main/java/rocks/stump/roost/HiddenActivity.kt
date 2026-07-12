@@ -17,7 +17,7 @@ import android.widget.TextView
  */
 class HiddenActivity : SettingsScreen() {
 
-    override fun screenTitle(): String = "Hidden items"
+    override fun screenTitle(): String = "Hidden Items"
 
     override fun buildContent(body: LinearLayout) {
         body.addView(hint("Tiles you hid from the home long-press menu. Restore any to the grid.")
@@ -89,8 +89,9 @@ class HiddenActivity : SettingsScreen() {
             val url = key.removePrefix("web:")
             Prefs.webApps(this).find { it.url == url }?.name ?: url
         }
-        else -> Prefs.actionButtons(this).find { it.key == key }?.title
-            ?: key.substringAfterLast(":").ifBlank { key }
+        else -> Prefs.actionButtons(this).find { it.key == key }?.let { b ->
+            if (b.kind == ActionKind.SHORTCUT) ShortcutProvider.displayTitle(b, appLabel(b.a)) else b.title
+        } ?: key.substringAfterLast(":").ifBlank { key }
     }
 
     private fun appDrawable(key: String): Drawable? {
