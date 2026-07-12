@@ -7,6 +7,8 @@ import styles from './index.module.css';
 
 export default function Home(): JSX.Element {
   const {siteConfig} = useDocusaurusContext();
+  const sourceUrl = siteConfig.customFields.sourceUrl as string;
+  const sourceLabel = siteConfig.customFields.sourceLabel as string;
 
   const homeShot = useBaseUrl('img/home.png');
   const settingsShot = useBaseUrl('img/settings.png');
@@ -53,8 +55,8 @@ export default function Home(): JSX.Element {
             </p>
             <div className={styles.heroButtons}>
               <Link className={styles.btnPrimary} to="/docs/">Get started →</Link>
-              <Link className={styles.btnGhost} to="https://github.com/joestump/roost-android-launcher">
-                GitHub
+              <Link className={styles.btnGhost} to={sourceUrl}>
+                {sourceLabel}
               </Link>
             </div>
           </div>
