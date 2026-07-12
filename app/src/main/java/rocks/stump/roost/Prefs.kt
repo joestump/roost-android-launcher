@@ -51,6 +51,11 @@ object Prefs {
     private const val K_HTTP_ACTIONS = "http_actions"
     private const val K_HTTP_SECRETS = "http_secrets"
     private const val K_ACTION_DENSITY = "action_density"
+    private const val K_SYNCED_FOLDER = "synced_folder_uri"
+    private const val K_SYNCED_IDS = "synced_action_ids"
+    private const val K_SYNCED_SOURCES = "synced_action_sources"
+    private const val K_SYNC_LAST_AT = "sync_last_at"
+    private const val K_SYNC_LAST_SUMMARY = "sync_last_summary"
 
     private fun sp(c: Context): SharedPreferences =
         c.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -233,6 +238,42 @@ object Prefs {
         if (value.isNullOrEmpty()) o.remove(id) else o.put(id, value)
         sp(c).edit().putString(K_HTTP_SECRETS, o.toString()).apply()
     }
+
+    // --- Synced actions (declarative provisioning from a granted folder) ---
+    // The persisted SAF tree URI of the owner's Syncthing-shared folder, the set of ids Roost has
+    // imported from that folder's actions.d/*.json (the reconcile-removal scope — manual actions are
+    // never in here), and a compact last-sync status. All tolerant/typed like the collections above.
+    // Governing: ADR-0006 (declarative action provisioning), SPEC-0003 REQ "Grant a synced folder"
+
+    /** The persisted SAF tree URI (as a String), or null if no folder has been granted. */
+    fun syncedFolderUri(c: Context): String? = sp(c).getString(K_SYNCED_FOLDER, null)
+    fun setSyncedFolderUri(c: Context, uri: String?) =
+        sp(c).edit().putString(K_SYNCED_FOLDER, uri).apply()
+
+    /** The ids Roost imported from the folder — the ONLY ids a sync is allowed to remove. */
+    fun syncedActionIds(c: Context): MutableSet<String> =
+        LinkedHashSet(sp(c).getStringSet(K_SYNCED_IDS, emptySet()) ?: emptySet())
+    fun setSyncedActionIds(c: Context, ids: Set<String>) =
+        sp(c).edit().putStringSet(K_SYNCED_IDS, LinkedHashSet(ids)).apply()
+
+    /** id → source filename for each synced action, so removal keys off file PRESENCE (a present-but-
+     *  malformed file still protects its action) rather than parseability. */
+    fun syncedActionSources(c: Context): Map<String, String> {
+        val o = JSONObject(sp(c).getString(K_SYNCED_SOURCES, "{}") ?: "{}")
+        val out = LinkedHashMap<String, String>()
+        for (k in o.keys()) out[k] = o.optString(k)
+        return out
+    }
+    fun setSyncedActionSources(c: Context, map: Map<String, String>) {
+        val o = JSONObject()
+        map.forEach { (id, name) -> o.put(id, name) }
+        sp(c).edit().putString(K_SYNCED_SOURCES, o.toString()).apply()
+    }
+
+    fun syncLastAt(c: Context): Long = sp(c).getLong(K_SYNC_LAST_AT, 0L)
+    fun syncLastSummary(c: Context): String = sp(c).getString(K_SYNC_LAST_SUMMARY, "") ?: ""
+    fun setSyncLast(c: Context, at: Long, summary: String) =
+        sp(c).edit().putLong(K_SYNC_LAST_AT, at).putString(K_SYNC_LAST_SUMMARY, summary).apply()
 
     // --- Action-zone tile density (one setting for the whole zone) ---
     // Stored as the enum name; a bad/absent value falls back to REGULAR (today's look).

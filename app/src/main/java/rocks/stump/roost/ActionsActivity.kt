@@ -36,6 +36,12 @@ class ActionsActivity : SettingsScreen() {
         val shortcutCount = buttons.count { it.kind == ActionKind.SHORTCUT }.toString()
         val enabledCount = buttons.size.toString()
 
+        // Synced actions (ADR-0006 / SPEC-0003): a folder Roost imports actions.d/*.json from. The sub
+        // reflects whether a folder is granted; the trailing count is the number of imported ids.
+        val syncedGranted = Prefs.syncedFolderUri(this) != null
+        val syncedIds = Prefs.syncedActionIds(this).size
+        val syncedSub = if (syncedGranted) "$syncedIds synced · from actions.d" else "Provision from a shared folder"
+
         body.addView(gap(dp(4f)))
         body.addView(card(
             navRow(R.drawable.ic_bolt, "HTTP actions", "Endpoints you POST to", httpCount) {
@@ -46,6 +52,10 @@ class ActionsActivity : SettingsScreen() {
             },
             navRow(R.drawable.ic_search, "App shortcuts", "One-tap app shortcuts", shortcutCount) {
                 startActivity(Intent(this, ShortcutsActivity::class.java))
+            },
+            navRow(R.drawable.ic_folder_sync, "Synced actions", syncedSub,
+                if (syncedGranted) syncedIds.toString() else null) {
+                startActivity(Intent(this, SyncedActionsActivity::class.java))
             },
             navRow(R.drawable.ic_drag_handle, "Arrange on home", "Reorder the home Actions zone", enabledCount) {
                 startActivity(Intent(this, ArrangeActivity::class.java))

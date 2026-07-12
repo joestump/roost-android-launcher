@@ -125,6 +125,12 @@
             android:exported="false"
             android:label="@string/actions_title" />
 
+        <!-- ADR-0006 / SPEC-0003: declarative action provisioning from a granted actions.d/ folder. -->
+        <activity
+            android:name=".SyncedActionsActivity"
+            android:exported="false"
+            android:label="@string/actions_title" />
+
         <activity
             android:name=".IconPickerActivity"
             android:exported="false"

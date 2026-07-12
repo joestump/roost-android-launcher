@@ -62,6 +62,9 @@ class MainActivity : Activity() {
     // isPending() guard can't stop a fast double-tap from launching the target twice. (Fix 9.)
     private var lastShortcutFireAt = 0L
 
+    // Guards the on-resume synced-actions reconcile so it runs at most once per resume (ADR-0006).
+    private var syncReconciling = false
+
     // Independent 1s traffic-rate poll so the VPN chip always shows live up/down speeds,
     // regardless of whether the "Bandwidth heartbeat" graph is enabled.
     private val rateHandler = Handler(Looper.getMainLooper())
@@ -120,6 +123,23 @@ class MainActivity : Activity() {
         render()
         registerBattery()
         startRatePoll()
+        maybeReconcileSynced()
+    }
+
+    // If a synced folder is granted, reconcile actions.d/*.json OFF the main thread and re-render the
+    // home only if something changed. Guarded so it runs at most once per resume and never blocks UI.
+    // Governing: ADR-0006 (declarative action provisioning), SPEC-0003 REQ "Reconcile trigger and ordering"
+    private fun maybeReconcileSynced() {
+        if (Prefs.syncedFolderUri(this) == null) return
+        if (syncReconciling) return
+        syncReconciling = true
+        Thread {
+            val res = SyncedActions.reconcile(this)
+            runOnUiThread {
+                syncReconciling = false
+                if (res.changed() && !isFinishing) render()
+            }
+        }.start()
     }
 
     override fun onPause() {
