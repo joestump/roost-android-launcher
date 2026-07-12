@@ -15,7 +15,7 @@ tiles**. Everything except the hero is the same tile — favorite apps, web apps
 scenes, and [HTTP actions](./http-actions.md) — with a **Store** tile at the tail for adding more. A **filter
 chip row** above the grid (`All`, plus a chip per kind present — Apps / Web / Shortcuts / HTTP / Scenes)
 narrows the tiles. Every tile carries the same three lines — a **title**, a **metadata subtitle**, and an
-**action line** — filled per kind: an app shows its package + "tap to open", a web tile its host, a shortcut
+**action line** — filled per kind: an app its category + "tap to open", a web tile its host, a shortcut
 "shortcut" + "tap to run", an HTTP tile `METHOD · host` + its fire state. Tapping the mascot or the hero card
 opens your agent. On boot, the agent app is foregrounded once — optionally behind a
 [waking-up sequence](./design.md#waking-up).

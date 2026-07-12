@@ -915,7 +915,7 @@ class MainActivity : Activity() {
         // and the action verb are per kind — apps show their package + "tap to open", web its host, a
         // shortcut "shortcut" + "tap to run", HTTP "METHOD · host" + the fire status, a scene "scene".
         val (subtitle, idleStatus) = when (b.kind) {
-            ActionKind.APP -> b.a to "tap to open"
+            ActionKind.APP -> (appCategoryLabel(b.a) ?: b.a) to "tap to open"
             ActionKind.WEB -> HttpActionClient.hostOf(b.a) to "tap to open"
             ActionKind.SHORTCUT -> "shortcut" to "tap to run"
             ActionKind.HTTP ->
@@ -1049,6 +1049,14 @@ class MainActivity : Activity() {
     } catch (e: PackageManager.NameNotFoundException) {
         null
     }
+
+    /** The app's coarse category ("Productivity", "Social", …) if the developer declared one via
+     *  android:appCategory — usually null, since most apps don't set it. Used as the app tile's subtitle
+     *  when present, else the package name. */
+    private fun appCategoryLabel(pkg: String): String? = try {
+        val cat = packageManager.getApplicationInfo(pkg, 0).category
+        android.content.pm.ApplicationInfo.getCategoryTitle(this, cat)?.toString()
+    } catch (e: Exception) { null }
 
     private fun webIcon(): Drawable? =
         try { resources.getDrawable(R.drawable.ic_web, theme)?.mutate() } catch (e: Exception) { null }
